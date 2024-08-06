@@ -20,12 +20,15 @@ package org.apache.hudi.table.action.commit;
 
 import org.apache.hudi.common.config.HoodieCommonConfig;
 import org.apache.hudi.common.model.HoodieBaseFile;
+import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
+import org.apache.hudi.common.table.log.HoodieUnMergedSortedLogRecordScanner;
 import org.apache.hudi.common.util.InternalSchemaCache;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.collection.ClosableIterator;
+import org.apache.hudi.common.util.collection.CloseableMappingIterator;
 import org.apache.hudi.common.util.queue.HoodieExecutor;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.exception.HoodieException;
@@ -49,11 +52,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.hudi.avro.AvroSchemaUtils.isStrictProjectionOf;
 
@@ -70,6 +78,68 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
 
   public static HoodieMergeHelper newInstance() {
     return MergeHelperHolder.HOODIE_MERGE_HELPER;
+  }
+
+  private ClosableIterator<HoodieRecord> getBaseFileRecordIterator(HoodieFileReader baseFileReader, Schema readSchema, HoodieMergeHandle mergeHandle, boolean sorted) throws IOException {
+    ClosableIterator<HoodieRecord> rawRecordItr = new CloseableMappingIterator<HoodieRecord, HoodieRecord>(baseFileReader.getRecordIterator(readSchema), record -> {
+      String recordKey = record.getRecordKey(readSchema, mergeHandle.getKeyGeneratorOpt());
+      record.setKey(new HoodieKey(recordKey, mergeHandle.getPartitionPath()));
+      return record;
+    });
+    if (!sorted || isSortedBaseFile(baseFileReader)) {
+        return rawRecordItr;
+    }
+    // sort the base file records
+    return new SortedIterator(rawRecordItr);
+  }
+
+  static class SortedIterator implements ClosableIterator<HoodieRecord> {
+
+    private final ClosableIterator<HoodieRecord> rawIterator;
+
+    private Iterator<HoodieRecord> sortedIterator;
+
+    private final Queue<HoodieRecord> sortedQueue;
+
+    SortedIterator(ClosableIterator<HoodieRecord> rawIterator) {
+      this.rawIterator = rawIterator;
+      this.sortedQueue = new LinkedList<>();
+      init();
+    }
+
+    private void init() {
+      // scan all records and sort them
+      Queue<HoodieRecord> queue = new LinkedList<>();
+      while (rawIterator.hasNext()) {
+        queue.add(rawIterator.next());
+      }
+      this.sortedIterator = queue.stream().sorted((o1, o2) -> HoodieUnMergedSortedLogRecordScanner.DEFAULT_KEY_COMPARATOR.compare(o1.getKey(), o2.getKey())).iterator();
+    }
+
+    @Override
+    public boolean hasNext() {
+      return sortedIterator.hasNext();
+    }
+
+    @Override
+    public HoodieRecord next() {
+      return sortedIterator.next();
+    }
+
+    @Override
+    public void close() {
+      rawIterator.close();
+    }
+  }
+
+  private boolean isSortedBaseFile(HoodieFileReader baseFile) {
+    // TODO: check through file suffix
+    return false;
+  }
+
+  private boolean isSortedMergeCompaction() {
+    // TODO: check through config
+    return true;
   }
 
   @Override
@@ -125,8 +195,12 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
         // In case writer's schema is simply a projection of the reader's one we can read
         // the records in the projected schema directly
         recordSchema = isPureProjection ? writerSchema : readerSchema;
-        recordIterator = (ClosableIterator<HoodieRecord>) baseFileReader.getRecordIterator(recordSchema);
-      }
+        if (isSortedMergeCompaction()) {
+          recordIterator = getBaseFileRecordIterator(baseFileReader, recordSchema, mergeHandle, true);
+        } else {
+          recordIterator = (ClosableIterator<HoodieRecord>) baseFileReader.getRecordIterator(recordSchema);
+        }
+    }
 
       boolean isBufferingRecords = ExecutorFactory.isBufferingRecords(writeConfig);
 

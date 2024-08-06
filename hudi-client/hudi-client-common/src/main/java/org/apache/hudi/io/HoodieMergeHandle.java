@@ -162,6 +162,10 @@ public class HoodieMergeHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O>
     return baseFileOp.get();
   }
 
+  public Option<BaseKeyGenerator> getKeyGeneratorOpt() {
+    return keyGeneratorOpt;
+  }
+
   /**
    * Extract old file path, initialize StorageWriter and WriteStatus.
    */
@@ -260,7 +264,7 @@ public class HoodieMergeHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O>
     LOG.info("Number of entries in MemoryBasedMap => "
         + ((ExternalSpillableMap) keyToNewRecords).getInMemoryMapNumEntries()
         + ", Total size in bytes of MemoryBasedMap => "
-        + ((ExternalSpillableMap) keyToNewRecords).getCurrentInMemoryMapSize() + ", Number of entries in BitCaskDiskMap => "
+        + ((ExternalSpillableMap) keyToNewRecords).getCurrentInMemoryMapSize() + ", Number of entries in DiskBasedMap => "
         + ((ExternalSpillableMap) keyToNewRecords).getDiskBasedMapNumEntries() + ", Size of file spilled to disk => "
         + ((ExternalSpillableMap) keyToNewRecords).getSizeOfFileOnDiskInBytes());
   }

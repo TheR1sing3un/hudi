@@ -20,6 +20,7 @@
 package org.apache.hudi.table;
 
 import org.apache.hudi.client.WriteStatus;
+import org.apache.hudi.common.model.BaseHoodieRecord;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
@@ -47,4 +48,10 @@ public interface HoodieCompactionHandler<T> {
                                                            Map<HoodieLogBlock.HeaderMetadataType, String> header) {
     throw new HoodieNotSupportedException("Operation is not yet supported");
   }
+
+  Iterator<List<WriteStatus>> handleUpdateWithUnMergedIterator(String instantTime, String partitionPath, String fileId,
+                                                               Iterator<BaseHoodieRecord> unMergedRecordsItr, HoodieBaseFile oldDataFile) throws IOException;
+
+  Iterator<List<WriteStatus>> handleInsertWithUnMergedIterator(String instantTime, String partitionPath, String fileId,
+                                                               Iterator<BaseHoodieRecord> unMergedRecordsItr) throws IOException;
 }

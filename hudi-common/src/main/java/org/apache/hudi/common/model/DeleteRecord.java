@@ -18,8 +18,11 @@
 
 package org.apache.hudi.common.model;
 
+import org.apache.avro.Schema;
+
 import java.io.Serializable;
 import java.util.Objects;
+import java.util.Properties;
 
 /**
  * Delete record is a combination of HoodieKey and ordering value.
@@ -38,13 +41,13 @@ import java.util.Objects;
  *
  *       Check out HUDI-5760 for more details
  */
-public class DeleteRecord implements Serializable {
+public class DeleteRecord extends BaseHoodieRecord implements Serializable {
   private static final long serialVersionUID = 1L;
 
-  /**
-   * The record key and partition path.
-   */
-  private final HoodieKey hoodieKey;
+//  /**
+//   * The record key and partition path.
+//   */
+//  private final HoodieKey hoodieKey;
 
   /**
    * For purposes of preCombining.
@@ -52,7 +55,8 @@ public class DeleteRecord implements Serializable {
   private final Comparable<?> orderingVal;
 
   private DeleteRecord(HoodieKey hoodieKey, Comparable orderingVal) {
-    this.hoodieKey = hoodieKey;
+    // this.hoodieKey = hoodieKey;
+    super(hoodieKey);
     this.orderingVal = orderingVal;
   }
 
@@ -73,15 +77,15 @@ public class DeleteRecord implements Serializable {
   }
 
   public String getRecordKey() {
-    return hoodieKey.getRecordKey();
+    return key.getRecordKey();
   }
 
   public String getPartitionPath() {
-    return hoodieKey.getPartitionPath();
+    return key.getPartitionPath();
   }
 
   public HoodieKey getHoodieKey() {
-    return hoodieKey;
+    return key;
   }
 
   public Comparable<?> getOrderingValue() {
@@ -97,19 +101,24 @@ public class DeleteRecord implements Serializable {
       return false;
     }
     DeleteRecord that = (DeleteRecord) o;
-    return this.hoodieKey.equals(that.hoodieKey) && this.orderingVal.equals(that.orderingVal);
+    return this.key.equals(that.key) && this.orderingVal.equals(that.orderingVal);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.hoodieKey, this.orderingVal);
+    return Objects.hash(this.key, this.orderingVal);
   }
 
   @Override
   public String toString() {
     return "DeleteRecord {"
-            + " key=" + hoodieKey
+            + " key=" + key
             + " orderingVal=" + this.orderingVal
             + '}';
+  }
+
+  @Override
+  public Comparable<?> getOrderingValue(Schema recordSchema, Properties props) {
+    return orderingVal;
   }
 }

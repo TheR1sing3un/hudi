@@ -33,6 +33,7 @@ import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
 import org.apache.hudi.common.table.log.HoodieMergedLogRecordScanner;
+import org.apache.hudi.common.table.log.HoodieUnMergedSortedLogRecordScanner;
 import org.apache.hudi.common.table.log.InstantRange;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.CollectionUtils;
@@ -149,6 +150,11 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
         taskContextSupplier, new CompactionExecutionHelper());
   }
 
+  private boolean isSortedMergeCompaction() {
+    // TODO: judge compaction type
+    return true;
+  }
+
   /**
    * Execute a single compaction operation and report back status.
    */
@@ -189,20 +195,39 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
             new StoragePath(FSUtils.constructAbsolutePath(
                 metaClient.getBasePath(), operation.getPartitionPath()), p).toString())
         .collect(toList());
-    HoodieMergedLogRecordScanner scanner = HoodieMergedLogRecordScanner.newBuilder()
+
+    // TODO: add new logic gracefully
+
+//    HoodieMergedLogRecordScanner scanner = HoodieMergedLogRecordScanner.newBuilder()
+//        .withStorage(storage)
+//        .withBasePath(metaClient.getBasePath())
+//        .withLogFilePaths(logFiles)
+//        .withReaderSchema(readerSchema)
+//        .withLatestInstantTime(executionHelper.instantTimeToUseForScanning(instantTime, maxInstantTime))
+//        .withInstantRange(instantRange)
+//        .withInternalSchema(internalSchemaOption.orElse(InternalSchema.getEmptyInternalSchema()))
+//        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
+//        .withReverseReader(config.getCompactionReverseLogReadEnabled())
+//        .withBufferSize(config.getMaxDFSStreamBufferSize())
+//        .withSpillableMapBasePath(config.getSpillableMapBasePath())
+//        .withDiskMapType(config.getCommonConfig().getSpillableDiskMapType())
+//        .withBitCaskDiskMapCompressionEnabled(config.getCommonConfig().isBitCaskDiskMapCompressionEnabled())
+//        .withOperationField(config.allowOperationMetadataField())
+//        .withPartition(operation.getPartitionPath())
+//        .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
+//        .withRecordMerger(config.getRecordMerger())
+//        .withTableMetaClient(metaClient)
+//        .build();
+
+    HoodieUnMergedSortedLogRecordScanner scanner = HoodieUnMergedSortedLogRecordScanner.newBuilder()
         .withStorage(storage)
         .withBasePath(metaClient.getBasePath())
         .withLogFilePaths(logFiles)
         .withReaderSchema(readerSchema)
         .withLatestInstantTime(executionHelper.instantTimeToUseForScanning(instantTime, maxInstantTime))
-        .withInstantRange(instantRange)
         .withInternalSchema(internalSchemaOption.orElse(InternalSchema.getEmptyInternalSchema()))
-        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
         .withReverseReader(config.getCompactionReverseLogReadEnabled())
         .withBufferSize(config.getMaxDFSStreamBufferSize())
-        .withSpillableMapBasePath(config.getSpillableMapBasePath())
-        .withDiskMapType(config.getCommonConfig().getSpillableDiskMapType())
-        .withBitCaskDiskMapCompressionEnabled(config.getCommonConfig().isBitCaskDiskMapCompressionEnabled())
         .withOperationField(config.allowOperationMetadataField())
         .withPartition(operation.getPartitionPath())
         .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
