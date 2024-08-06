@@ -57,11 +57,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.apache.hudi.avro.AvroSchemaUtils.isStrictProjectionOf;
 
@@ -87,7 +85,7 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
       return record;
     });
     if (!sorted || isSortedBaseFile(baseFileReader)) {
-        return rawRecordItr;
+      return rawRecordItr;
     }
     // sort the base file records
     return new SortedIterator(rawRecordItr);
@@ -200,7 +198,7 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
         } else {
           recordIterator = (ClosableIterator<HoodieRecord>) baseFileReader.getRecordIterator(recordSchema);
         }
-    }
+      }
 
       boolean isBufferingRecords = ExecutorFactory.isBufferingRecords(writeConfig);
 

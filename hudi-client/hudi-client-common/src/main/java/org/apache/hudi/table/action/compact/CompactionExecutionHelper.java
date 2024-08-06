@@ -92,8 +92,8 @@ public class CompactionExecutionHelper<T extends HoodieRecordPayload, I, K, O> i
                                                                   Option<HoodieBaseFile> oldDataFileOpt) throws IOException {
     if (!oldDataFileOpt.isPresent()) {
       // handle insert
-        return compactionHandler.handleInsertWithUnMergedIterator(instantTime, operation.getPartitionPath(), operation.getFileId(),
-            scanner.iterator());
+      return compactionHandler.handleInsertWithUnMergedIterator(instantTime, operation.getPartitionPath(), operation.getFileId(),
+          scanner.iterator());
     }
 
     return compactionHandler.handleUpdateWithUnMergedIterator(instantTime, operation.getPartitionPath(),

@@ -115,11 +115,6 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
   public static int COMMIT_TIME_METADATA_FIELD_ORD = HOODIE_META_COLUMNS_NAME_TO_POS.get(COMMIT_TIME_METADATA_FIELD);
   public static int COMMIT_SEQNO_METADATA_FIELD_ORD = HOODIE_META_COLUMNS_NAME_TO_POS.get(COMMIT_SEQNO_METADATA_FIELD);
 
-//  /**
-//   * Identifies the record across the table.
-//   */
-//  protected HoodieKey key;
-
   /**
    * Actual payload of the record.
    */

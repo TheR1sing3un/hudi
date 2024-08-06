@@ -44,11 +44,6 @@ import java.util.Properties;
 public class DeleteRecord extends BaseHoodieRecord implements Serializable {
   private static final long serialVersionUID = 1L;
 
-//  /**
-//   * The record key and partition path.
-//   */
-//  private final HoodieKey hoodieKey;
-
   /**
    * For purposes of preCombining.
    */

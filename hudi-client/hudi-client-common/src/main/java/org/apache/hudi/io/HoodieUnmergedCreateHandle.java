@@ -42,10 +42,9 @@ public class HoodieUnmergedCreateHandle<T, I, K, O> extends HoodieCreateHandle<T
     super(config, instantTime, hoodieTable, partitionPath, fileId, overriddenSchema, taskContextSupplier);
   }
 
-
   public HoodieUnmergedCreateHandle(HoodieWriteConfig config, String instantTime, HoodieTable<T, I, K, O> hoodieTable,
-                            String partitionPath, String fileId, Iterator<BaseHoodieRecord> recordItr,
-                            TaskContextSupplier taskContextSupplier) {
+                                    String partitionPath, String fileId, Iterator<BaseHoodieRecord> recordItr,
+                                    TaskContextSupplier taskContextSupplier) {
     this(config, instantTime, hoodieTable, partitionPath, fileId, taskContextSupplier, true);
     unmergedRecordsIter = recordItr;
     useWriterSchema = true;

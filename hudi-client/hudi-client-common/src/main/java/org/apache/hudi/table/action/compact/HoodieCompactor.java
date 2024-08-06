@@ -32,7 +32,6 @@ import org.apache.hudi.common.model.HoodieWriteStat.RuntimeStats;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
-import org.apache.hudi.common.table.log.HoodieMergedLogRecordScanner;
 import org.apache.hudi.common.table.log.HoodieUnMergedSortedLogRecordScanner;
 import org.apache.hudi.common.table.log.InstantRange;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
@@ -76,7 +75,7 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
    *
    * @param table                     {@link HoodieTable} instance to use.
    * @param pendingCompactionTimeline pending compaction timeline.
-   * @param instantTime     compaction instant
+   * @param instantTime               compaction instant
    */
   public abstract void preCompact(
       HoodieTable table, HoodieTimeline pendingCompactionTimeline, WriteOperationType operationType, String instantTime);
@@ -132,7 +131,7 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
     // if this is a MDT, set up the instant range of log reader just like regular MDT snapshot reader.
     Option<InstantRange> instantRange = CompactHelpers.getInstance().getInstantRange(metaClient);
     return context.parallelize(operations).map(operation -> compact(
-        compactionHandler, metaClient, config, operation, compactionInstantTime, maxInstantTime, instantRange, taskContextSupplier, executionHelper))
+            compactionHandler, metaClient, config, operation, compactionInstantTime, maxInstantTime, instantRange, taskContextSupplier, executionHelper))
         .flatMap(List::iterator);
   }
 
@@ -197,27 +196,6 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
         .collect(toList());
 
     // TODO: add new logic gracefully
-
-//    HoodieMergedLogRecordScanner scanner = HoodieMergedLogRecordScanner.newBuilder()
-//        .withStorage(storage)
-//        .withBasePath(metaClient.getBasePath())
-//        .withLogFilePaths(logFiles)
-//        .withReaderSchema(readerSchema)
-//        .withLatestInstantTime(executionHelper.instantTimeToUseForScanning(instantTime, maxInstantTime))
-//        .withInstantRange(instantRange)
-//        .withInternalSchema(internalSchemaOption.orElse(InternalSchema.getEmptyInternalSchema()))
-//        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
-//        .withReverseReader(config.getCompactionReverseLogReadEnabled())
-//        .withBufferSize(config.getMaxDFSStreamBufferSize())
-//        .withSpillableMapBasePath(config.getSpillableMapBasePath())
-//        .withDiskMapType(config.getCommonConfig().getSpillableDiskMapType())
-//        .withBitCaskDiskMapCompressionEnabled(config.getCommonConfig().isBitCaskDiskMapCompressionEnabled())
-//        .withOperationField(config.allowOperationMetadataField())
-//        .withPartition(operation.getPartitionPath())
-//        .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
-//        .withRecordMerger(config.getRecordMerger())
-//        .withTableMetaClient(metaClient)
-//        .build();
 
     HoodieUnMergedSortedLogRecordScanner scanner = HoodieUnMergedSortedLogRecordScanner.newBuilder()
         .withStorage(storage)

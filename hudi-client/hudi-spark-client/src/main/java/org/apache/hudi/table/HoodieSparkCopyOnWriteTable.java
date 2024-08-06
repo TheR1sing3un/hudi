@@ -281,8 +281,8 @@ public class HoodieSparkCopyOnWriteTable<T>
   }
 
   @Override
-  public Iterator<List<WriteStatus>> handleUpdateWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<BaseHoodieRecord> unMergedRecordsItr, HoodieBaseFile oldDataFile)
-      throws IOException {
+  public Iterator<List<WriteStatus>> handleUpdateWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<BaseHoodieRecord> unMergedRecordsItr,
+                                                                      HoodieBaseFile oldDataFile) throws IOException {
     HoodieMergeHandle upsertHandle = getUpdateHandleForSortedMerge(instantTime, partitionPath, fileId, unMergedRecordsItr, oldDataFile);
     return handleUpdateInternal(upsertHandle, instantTime, fileId);
   }

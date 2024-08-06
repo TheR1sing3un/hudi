@@ -9,12 +9,13 @@ public abstract class BaseHoodieRecord {
   protected BaseHoodieRecord(HoodieKey key) {
     this.key = key;
   }
+
   public HoodieKey getKey() {
-      return key;
+    return key;
   }
 
   public void setKey(HoodieKey key) {
-      this.key = key;
+    this.key = key;
   }
 
   public abstract Comparable<?> getOrderingValue(Schema recordSchema, Properties props);

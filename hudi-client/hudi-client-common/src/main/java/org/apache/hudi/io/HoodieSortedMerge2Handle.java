@@ -189,7 +189,7 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
 
       return Collections.singletonList(writeStatus);
     } catch (IOException e) {
-        throw new HoodieUpsertException("Failed to close HoodieSortedMerge2Handle", e);
+      throw new HoodieUpsertException("Failed to close HoodieSortedMerge2Handle", e);
     }
   }
 

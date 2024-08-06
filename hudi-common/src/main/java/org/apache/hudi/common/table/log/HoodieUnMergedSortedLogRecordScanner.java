@@ -36,7 +36,7 @@ public class HoodieUnMergedSortedLogRecordScanner extends AbstractHoodieLogRecor
 
   public static final Comparator<HoodieKey> DEFAULT_KEY_COMPARATOR = Comparator.comparing(HoodieKey::getRecordKey);
 
-  private final Comparator<BaseHoodieRecord> DEFAULT_COMPARATOR = (o1, o2) -> {
+  private final Comparator<BaseHoodieRecord> defaultComparator = (o1, o2) -> {
 
     // Compare by key first
     int keyCompareResult = DEFAULT_KEY_COMPARATOR.compare(o1.getKey(), o2.getKey());
@@ -68,7 +68,7 @@ public class HoodieUnMergedSortedLogRecordScanner extends AbstractHoodieLogRecor
                                                  Option<Comparator<BaseHoodieRecord>> comparator) {
     super(storage, basePath, logFilePaths, readerSchema, latestInstantTime, reverseReader, bufferSize, instantRange, withOperationField, forceFullScan, partitionNameOverride, internalSchema,
         keyFieldOverride, enableOptimizedLogBlocksScan, recordMerger, hoodieTableMetaClientOption);
-    this.hoodieRecordComparator = comparator.orElse(DEFAULT_COMPARATOR);
+    this.hoodieRecordComparator = comparator.orElse(defaultComparator);
     this.records = new ArrayList<>();
     // TODO: use external-sorter
     // scan all records but don't merge them
@@ -82,7 +82,7 @@ public class HoodieUnMergedSortedLogRecordScanner extends AbstractHoodieLogRecor
     this.sortedRecords = records.stream().sorted(hoodieRecordComparator).collect(Collectors.toList());
     scanningCostInMs = timer.endTimer();
     if (LOG.isInfoEnabled()) {
-        LOG.info("Scanned {} log files with stats: RecordsNum => {}, took {} ms ", logFilePaths.size(), records.size(), scanningCostInMs);
+      LOG.info("Scanned {} log files with stats: RecordsNum => {}, took {} ms ", logFilePaths.size(), records.size(), scanningCostInMs);
     }
   }
 
@@ -119,10 +119,7 @@ public class HoodieUnMergedSortedLogRecordScanner extends AbstractHoodieLogRecor
     return new HoodieUnMergedSortedLogRecordScanner.Builder();
   }
 
-
-
   public static class Builder extends AbstractHoodieLogRecordReader.Builder {
-
     private HoodieStorage storage;
     private String basePath;
     private List<String> logFilePaths;
@@ -262,9 +259,9 @@ public class HoodieUnMergedSortedLogRecordScanner extends AbstractHoodieLogRecor
             new StoragePath(basePath), new StoragePath(this.logFilePaths.get(0)).getParent());
       }
       return new HoodieUnMergedSortedLogRecordScanner(
-            storage, basePath, logFilePaths, readerSchema, latestInstantTime, reverseReader, bufferSize, instantRange,
-            withOperationField, forceFullScan, Option.ofNullable(partitionName), internalSchema, keyFieldOverride,
-            enableOptimizedLogBlocksScan, recordMerger, Option.ofNullable(hoodieTableMetaClient), comparator);
+        storage, basePath, logFilePaths, readerSchema, latestInstantTime, reverseReader, bufferSize, instantRange,
+        withOperationField, forceFullScan, Option.ofNullable(partitionName), internalSchema, keyFieldOverride,
+        enableOptimizedLogBlocksScan, recordMerger, Option.ofNullable(hoodieTableMetaClient), comparator);
     }
   }
 }
