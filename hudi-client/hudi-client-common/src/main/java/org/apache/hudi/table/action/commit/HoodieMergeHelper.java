@@ -85,7 +85,6 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
   private ClosableIterator<HoodieRecord> getBaseFileRecordIterator(HoodieFileReader baseFileReader, Schema readSchema, HoodieMergeHandle mergeHandle, boolean sorted, long maxMemory)
       throws IOException {
     ClosableIterator<HoodieRecord> rawRecordItr = new CloseableMappingIterator<HoodieRecord, HoodieRecord>(baseFileReader.getRecordIterator(readSchema), record -> {
-      record.wrapIntoHoodieRecordPayloadWithParams(readSchema, mergeHandle.getConfig().getProps(), mergeHandle.getWriterSchemaWithMetaFields());
       String recordKey = record.getRecordKey(readSchema, mergeHandle.getKeyGeneratorOpt());
       record.setKey(new HoodieKey(recordKey, mergeHandle.getPartitionPath()));
       return record;

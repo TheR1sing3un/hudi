@@ -216,9 +216,9 @@ public class HoodieAvroIndexedRecord extends HoodieRecord<IndexedRecord> {
   @Override
   protected final void writeRecordPayload(IndexedRecord payload, Kryo kryo, Output output) {
     // NOTE: We're leveraging Spark's default [[GenericAvroSerializer]] to serialize Avro
-    Serializer<IndexedRecord> avroSerializer = kryo.getSerializer(IndexedRecord.class);
+    Serializer<GenericRecord> avroSerializer = kryo.getSerializer(GenericRecord.class);
 
-    avroSerializer.write(kryo, output, payload);
+    kryo.writeObject(output, payload, avroSerializer);
   }
 
   /**
@@ -229,9 +229,9 @@ public class HoodieAvroIndexedRecord extends HoodieRecord<IndexedRecord> {
   @Override
   protected final IndexedRecord readRecordPayload(Kryo kryo, Input input) {
     // NOTE: We're leveraging Spark's default [[GenericAvroSerializer]] to serialize Avro
-    Serializer<IndexedRecord> avroSerializer = kryo.getSerializer(IndexedRecord.class);
+    Serializer<GenericRecord> avroSerializer = kryo.getSerializer(GenericRecord.class);
 
-    return avroSerializer.read(kryo, input, IndexedRecord.class);
+    return kryo.readObjectOrNull(input, GenericRecord.class, avroSerializer);
   }
 
   static void updateMetadataValuesInternal(GenericRecord avroRecord, MetadataValues metadataValues) {

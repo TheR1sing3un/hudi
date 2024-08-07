@@ -128,7 +128,7 @@ public class SerializationUtils {
       // Register serializers
       kryo.register(Utf8.class, new AvroUtf8Serializer());
       kryo.register(GenericData.Fixed.class, new GenericAvroSerializer<>());
-      kryo.register(IndexedRecord.class, new GenericAvroSerializer<IndexedRecord>());
+      kryo.register(GenericRecord.class, new GenericAvroSerializer<GenericRecord>());
 
       return kryo;
     }
