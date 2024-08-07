@@ -208,6 +208,7 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
         .withBufferSize(config.getMaxDFSStreamBufferSize())
         .withOperationField(config.allowOperationMetadataField())
         .withPartition(operation.getPartitionPath())
+        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
         .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
         .withRecordMerger(config.getRecordMerger())
         .withTableMetaClient(metaClient)

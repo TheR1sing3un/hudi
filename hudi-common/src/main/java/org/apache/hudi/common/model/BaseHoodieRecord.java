@@ -20,9 +20,10 @@ package org.apache.hudi.common.model;
 
 import org.apache.avro.Schema;
 
+import java.io.Serializable;
 import java.util.Properties;
 
-public abstract class BaseHoodieRecord {
+public abstract class BaseHoodieRecord implements Serializable {
   protected HoodieKey key;
   protected BaseHoodieRecord(HoodieKey key) {
     this.key = key;

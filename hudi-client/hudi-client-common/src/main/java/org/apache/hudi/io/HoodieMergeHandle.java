@@ -245,6 +245,8 @@ public class HoodieMergeHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O>
     return true;
   }
 
+
+
   /**
    * Load the new incoming records in a map and return partitionPath.
    */

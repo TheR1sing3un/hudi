@@ -46,7 +46,7 @@ import java.util.stream.IntStream;
 /**
  * A Single Record managed by Hoodie.
  */
-public abstract class HoodieRecord<T> extends BaseHoodieRecord implements HoodieRecordCompatibilityInterface, KryoSerializable, Serializable {
+public abstract class HoodieRecord<T> extends BaseHoodieRecord implements HoodieRecordCompatibilityInterface, KryoSerializable {
 
   private static final long serialVersionUID = 3015229555587559252L;
   public static final String COMMIT_TIME_METADATA_FIELD = HoodieMetadataField.COMMIT_TIME_METADATA_FIELD.getFieldName();
@@ -449,8 +449,8 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
    * We can see the usage of IGNORE_RECORD in
    * org.apache.spark.sql.hudi.command.payload.ExpressionPayload
    */
-  private static class EmptyRecord implements GenericRecord {
-    private EmptyRecord() {}
+  public static class EmptyRecord implements GenericRecord {
+    public EmptyRecord() {}
 
     @Override
     public void put(int i, Object v) {}

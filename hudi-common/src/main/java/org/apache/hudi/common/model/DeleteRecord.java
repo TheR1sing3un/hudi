@@ -20,7 +20,6 @@ package org.apache.hudi.common.model;
 
 import org.apache.avro.Schema;
 
-import java.io.Serializable;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -41,7 +40,7 @@ import java.util.Properties;
  *
  *       Check out HUDI-5760 for more details
  */
-public class DeleteRecord extends BaseHoodieRecord implements Serializable {
+public class DeleteRecord extends BaseHoodieRecord {
   private static final long serialVersionUID = 1L;
 
   /**
