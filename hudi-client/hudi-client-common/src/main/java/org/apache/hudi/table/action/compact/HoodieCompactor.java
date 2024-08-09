@@ -32,6 +32,7 @@ import org.apache.hudi.common.model.HoodieWriteStat.RuntimeStats;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
+import org.apache.hudi.common.table.log.HoodieMergedLogRecordScanner;
 import org.apache.hudi.common.table.log.HoodieUnMergedSortedLogRecordScanner;
 import org.apache.hudi.common.table.log.InstantRange;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
@@ -197,18 +198,38 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
 
     // TODO: add new logic gracefully
 
-    HoodieUnMergedSortedLogRecordScanner scanner = HoodieUnMergedSortedLogRecordScanner.newBuilder()
+//    HoodieUnMergedSortedLogRecordScanner scanner = HoodieUnMergedSortedLogRecordScanner.newBuilder()
+//        .withStorage(storage)
+//        .withBasePath(metaClient.getBasePath())
+//        .withLogFilePaths(logFiles)
+//        .withReaderSchema(readerSchema)
+//        .withLatestInstantTime(executionHelper.instantTimeToUseForScanning(instantTime, maxInstantTime))
+//        .withInternalSchema(internalSchemaOption.orElse(InternalSchema.getEmptyInternalSchema()))
+//        .withReverseReader(config.getCompactionReverseLogReadEnabled())
+//        .withBufferSize(config.getMaxDFSStreamBufferSize())
+//        .withOperationField(config.allowOperationMetadataField())
+//        .withPartition(operation.getPartitionPath())
+//        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
+//        .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
+//        .withRecordMerger(config.getRecordMerger())
+//        .withTableMetaClient(metaClient)
+//        .build();
+    HoodieMergedLogRecordScanner scanner = HoodieMergedLogRecordScanner.newBuilder()
         .withStorage(storage)
         .withBasePath(metaClient.getBasePath())
         .withLogFilePaths(logFiles)
         .withReaderSchema(readerSchema)
         .withLatestInstantTime(executionHelper.instantTimeToUseForScanning(instantTime, maxInstantTime))
+        .withInstantRange(instantRange)
         .withInternalSchema(internalSchemaOption.orElse(InternalSchema.getEmptyInternalSchema()))
+        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
         .withReverseReader(config.getCompactionReverseLogReadEnabled())
         .withBufferSize(config.getMaxDFSStreamBufferSize())
+        .withSpillableMapBasePath(config.getSpillableMapBasePath())
+        .withDiskMapType(config.getCommonConfig().getSpillableDiskMapType())
+        .withBitCaskDiskMapCompressionEnabled(config.getCommonConfig().isBitCaskDiskMapCompressionEnabled())
         .withOperationField(config.allowOperationMetadataField())
         .withPartition(operation.getPartitionPath())
-        .withMaxMemorySizeInBytes(maxMemoryPerCompaction)
         .withOptimizedLogBlocksScan(executionHelper.enableOptimizedLogBlockScan(config))
         .withRecordMerger(config.getRecordMerger())
         .withTableMetaClient(metaClient)

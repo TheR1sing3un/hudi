@@ -18,6 +18,7 @@
 
 package org.apache.hudi.io;
 
+import org.apache.hudi.avro.HoodieFileFooterSupport;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.TaskContextSupplier;
@@ -183,6 +184,8 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
     // write all records still stay in the iterator
     try {
       writeRemainingRecords();
+      // add metadata about sorted
+      fileWriter.writeFooterMetadata(HoodieFileFooterSupport.HOODIE_BASE_FILE_SORTED, "true");
       // close file writer
       fileWriter.close();
       fileWriter = null;

@@ -92,6 +92,7 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
     if (!sorted || isSortedBaseFile(baseFileReader)) {
       return rawRecordItr;
     }
+    LOG.info("Base file: {} is not sorted. Sorting the records before merge", mergeHandle.getOldFilePath());
     // sort the base file records
     return new SortedIterator(rawRecordItr, maxMemory, (o1, o2) -> HoodieUnMergedSortedLogRecordScanner.DEFAULT_KEY_COMPARATOR.compare(o1.getKey(), o2.getKey()),
         new HoodieRecordSizeEstimator<>(readSchema));
@@ -142,13 +143,12 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
   }
 
   private boolean isSortedBaseFile(HoodieFileReader baseFile) {
-    // TODO: check through file suffix
-    return false;
+    return baseFile.isSorted();
   }
 
   private boolean isSortedMergeCompaction() {
     // TODO: check through config
-    return true;
+    return false;
   }
 
   @Override

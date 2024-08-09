@@ -464,6 +464,8 @@ public class HoodieMergeHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O>
       LOG.info(String.format("MergeHandle for partitionPath %s fileID %s, took %d ms.", stat.getPartitionPath(),
           stat.getFileId(), runtimeStats.getTotalUpsertTime()));
 
+      LOG.info("MergeHandle successfully merge: {} to a new file: {}", oldFilePath, newFilePath);
+
       return Collections.singletonList(writeStatus);
     } catch (IOException e) {
       throw new HoodieUpsertException("Failed to close UpdateHandle", e);
