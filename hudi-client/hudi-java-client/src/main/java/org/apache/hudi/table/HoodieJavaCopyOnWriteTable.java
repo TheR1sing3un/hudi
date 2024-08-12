@@ -33,7 +33,6 @@ import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.client.common.HoodieJavaEngineContext;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.HoodieEngineContext;
-import org.apache.hudi.common.model.BaseHoodieRecord;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -311,7 +310,7 @@ public class HoodieJavaCopyOnWriteTable<T>
   }
 
   protected HoodieMergeHandle getUpdateHandleForSortedMerge(String instantTime, String partitionPath, String fileId,
-                                                            Iterator<BaseHoodieRecord> iterator, HoodieBaseFile dataFileToBeMerged) {
+                                                            Iterator<HoodieRecord> iterator, HoodieBaseFile dataFileToBeMerged) {
     return HoodieMergeHandleFactory.create(config, instantTime, this, iterator, partitionPath, fileId,
         dataFileToBeMerged, taskContextSupplier, Option.empty());
   }
@@ -327,7 +326,7 @@ public class HoodieJavaCopyOnWriteTable<T>
   }
 
   @Override
-  public Iterator<List<WriteStatus>> handleInsertWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<BaseHoodieRecord> unMergedRecordsItr) throws IOException {
+  public Iterator<List<WriteStatus>> handleInsertWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<HoodieRecord> unMergedRecordsItr) throws IOException {
     HoodieCreateHandle<?, ?, ?, ?> createHandle =
         new HoodieUnmergedCreateHandle<>(config, instantTime, this, partitionPath, fileId, unMergedRecordsItr, taskContextSupplier);
     createHandle.write();
@@ -335,7 +334,7 @@ public class HoodieJavaCopyOnWriteTable<T>
   }
 
   @Override
-  public Iterator<List<WriteStatus>> handleUpdateWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<BaseHoodieRecord> unMergedRecordsItr,
+  public Iterator<List<WriteStatus>> handleUpdateWithUnMergedIterator(String instantTime, String partitionPath, String fileId, Iterator<HoodieRecord> unMergedRecordsItr,
                                                                       HoodieBaseFile oldDataFile) throws IOException {
     HoodieMergeHandle upsertHandle = getUpdateHandleForSortedMerge(instantTime, partitionPath, fileId, unMergedRecordsItr, oldDataFile);
     return handleUpdateInternal(upsertHandle, instantTime, fileId);

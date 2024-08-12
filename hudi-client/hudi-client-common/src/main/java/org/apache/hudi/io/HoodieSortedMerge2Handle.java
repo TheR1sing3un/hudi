@@ -22,8 +22,6 @@ import org.apache.hudi.avro.HoodieFileFooterSupport;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.TaskContextSupplier;
-import org.apache.hudi.common.model.BaseHoodieRecord;
-import org.apache.hudi.common.model.DeleteRecord;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -54,18 +52,17 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
 
   private Set<HoodieKey> writtenKeys = new HashSet<>();
 
-  private List<Pair<HoodieKey, String>> opLogs = new ArrayList<>();
-
   private static final Logger LOG = LoggerFactory.getLogger(HoodieSortedMerge2Handle.class);
 
-  private final Iterator<BaseHoodieRecord> logRecords;
-  private BaseHoodieRecord iterCurrentRecord;
-
+  private final Iterator<HoodieRecord> logRecords;
+  private HoodieRecord iterCurrentRecord;
   private Option<HoodieRecord<T>> currentMergedRecord = Option.empty();
   private boolean currentMergedRecordMerged = false;
 
+  private long recordsMerge = 0;
+
   public HoodieSortedMerge2Handle(HoodieWriteConfig config, String instantTime, HoodieTable<T, I, K, O> hoodieTable,
-                                  Iterator<BaseHoodieRecord> recordItr, String partitionPath, String fileId, HoodieBaseFile baseFile,
+                                  Iterator<HoodieRecord> recordItr, String partitionPath, String fileId, HoodieBaseFile baseFile,
                                   TaskContextSupplier taskContextSupplier, Option<BaseKeyGenerator> keyGeneratorOpt) {
     super(config, instantTime, hoodieTable, Collections.emptyMap(), partitionPath, fileId, baseFile, taskContextSupplier, keyGeneratorOpt);
     this.logRecords = recordItr;
@@ -80,36 +77,19 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
 
   @Override
   public void write(HoodieRecord<T> oldRecord) {
-    opLogs.add(Pair.of(oldRecord.getKey(), "move-base"));
-    Schema oldSchema = writeSchemaWithMetaFields;
-    Schema newSchema = preserveMetadata ? writeSchemaWithMetaFields : writeSchema;
     while (iterCurrentRecord != null && HoodieUnMergedSortedLogRecordScanner.DEFAULT_KEY_COMPARATOR.compare(iterCurrentRecord.getKey(), oldRecord.getKey()) < 0) {
       // pick the to-be-merged record from logRecords iterator
-      opLogs.add(Pair.of(iterCurrentRecord.getKey(), "pick-log"));
       merge(iterCurrentRecord);
       iterCurrentRecord = logRecords.hasNext() ? logRecords.next() : null;
-      // opLogs.add(Pair.of(iterCurrentRecord.getKey(), "move-log"));
     }
 
     // no more valid log records in the iterator, pick the old record as the merged record
-    opLogs.add(Pair.of(oldRecord.getKey(), "pick-base"));
     merge(oldRecord);
   }
 
-  private void merge(BaseHoodieRecord newRecord) {
-    System.out.println("merge record: " + newRecord);
-    // for delete record, skip merge logic
-    if (newRecord instanceof DeleteRecord) {
-      if (currentMergedRecord.isEmpty() || !currentMergedRecord.get().getKey().getRecordKey().equals(newRecord.getKey().getRecordKey())) {
-        throw new HoodieUpsertException("Delete not supported in MergeOnRead");
-      }
-      recordsDeleted++;
-      currentMergedRecord = Option.empty();
-      return;
-    }
+  private void merge(HoodieRecord<T> record) {
 
     // for update record, merge new record with current merged record
-    HoodieRecord<T> record = (HoodieRecord<T>) newRecord;
     if (currentMergedRecord.isEmpty()) {
       currentMergedRecord = Option.of(record);
       currentMergedRecordMerged = false;
@@ -123,19 +103,24 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
       Option<Pair<HoodieRecord, Schema>> mergeResult;
       try {
         mergeResult = recordMerger.merge(currentMergedRecord.get(), oldSchema, record, newSchema, props);
+        Schema combineRecordSchema = mergeResult.map(Pair::getRight).orElse(null);
+        Option<HoodieRecord> combinedRecord = mergeResult.map(Pair::getLeft);
+        if (combinedRecord.isEmpty() || combinedRecord.get().shouldIgnore(combineRecordSchema, props)) {
+          // After merging return an empty record, so just mark currentMergedRecord as empty
+          currentMergedRecord = Option.empty();
+          currentMergedRecordMerged = false;
+          recordsDeleted++;
+          return;
+        }
+
+        recordsMerge++;
+        combinedRecord.get().setKey(currentMergedRecord.get().getKey());
+        currentMergedRecord = Option.of(combinedRecord.get());
+        currentMergedRecordMerged = true;
+        return;
       } catch (Exception e) {
         throw new HoodieUpsertException("Merge failed for key " + record.getRecordKey(), e);
       }
-      // TODO: deal with complex merge result
-      Option<HoodieRecord> combinedRecord = mergeResult.map(Pair::getLeft);
-      if (!combinedRecord.isPresent()) {
-        // directly throw exception when merge result is empty
-        throw new HoodieUpsertException("Merge failed for key " + record.getRecordKey());
-      }
-      combinedRecord.get().setKey(currentMergedRecord.get().getKey());
-      currentMergedRecord = Option.of(combinedRecord.get());
-      currentMergedRecordMerged = true;
-      return;
     }
 
     // different keys, write current merged record and update it with new record
@@ -145,7 +130,6 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
   }
 
   private void writeRecord(HoodieRecord<T> record, boolean merged) {
-    opLogs.add(Pair.of(record.getKey(), "write"));
     Option recordMetadata = record.getMetadata();
     if (!partitionPath.equals(record.getPartitionPath())) {
       HoodieUpsertException failureEx = new HoodieUpsertException("mismatched partition path, record partition: "
@@ -203,8 +187,11 @@ public class HoodieSortedMerge2Handle<T, I, K, O> extends HoodieMergeHandle<T, I
       runtimeStats.setTotalUpsertTime(timer.endTimer());
       stat.setRuntimeStats(runtimeStats);
 
-      LOG.info("lcylcylcy records written: " + recordsWritten);
-
+      LOG.info("MergeHandle Stats: TotalWrites=" + recordsWritten + ", " + "TotalDeletes=" + recordsDeleted + ", "
+          + "TotalUpdateWrites=" + updatedRecordsWritten + ", " + "TotalInserts=" + insertRecordsWritten + ", "
+          + "TotalErrors=" + writeStatus.getTotalErrorRecords() + ", " + "TotalBytesWritten=" + fileSizeInBytes + ", "
+          + "TotalRecordsSize=" + recordsMerge + ", " + "TotalUpsertTime=" + runtimeStats.getTotalUpsertTime() + " ("
+          + runtimeStats.getTotalUpsertTime() + "ms)");
       LOG.info(String.format("SortedMergeHandle2 for partitionPath %s fileID %s, took %d ms.", stat.getPartitionPath(),
           stat.getFileId(), runtimeStats.getTotalUpsertTime()));
 

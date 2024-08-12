@@ -19,7 +19,6 @@
 package org.apache.hudi.table.action.commit;
 
 import org.apache.hudi.common.config.HoodieCommonConfig;
-import org.apache.hudi.common.model.HoodieAvroIndexedRecord;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -92,7 +91,7 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
     if (!sorted || isSortedBaseFile(baseFileReader)) {
       return rawRecordItr;
     }
-    LOG.info("Base file: {} is not sorted. Sorting the records before merge", mergeHandle.getOldFilePath());
+    LOG.info("Base file: {} is not sorted. Sort the records before merging", mergeHandle.getOldFilePath());
     // sort the base file records
     return new SortedIterator(rawRecordItr, maxMemory, (o1, o2) -> HoodieUnMergedSortedLogRecordScanner.DEFAULT_KEY_COMPARATOR.compare(o1.getKey(), o2.getKey()),
         new HoodieRecordSizeEstimator<>(readSchema));
@@ -144,11 +143,6 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
 
   private boolean isSortedBaseFile(HoodieFileReader baseFile) {
     return baseFile.isSorted();
-  }
-
-  private boolean isSortedMergeCompaction() {
-    // TODO: check through config
-    return false;
   }
 
   @Override
@@ -204,7 +198,7 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
         // In case writer's schema is simply a projection of the reader's one we can read
         // the records in the projected schema directly
         recordSchema = isPureProjection ? writerSchema : readerSchema;
-        if (isSortedMergeCompaction()) {
+        if (writeConfig.isSortedMergeCompactionEnabled()) {
           long maxMemoryPerCompaction = IOUtils.getMaxMemoryPerCompaction(table.getTaskContextSupplier(), writeConfig);
           recordIterator = getBaseFileRecordIterator(baseFileReader, recordSchema, mergeHandle, true, maxMemoryPerCompaction);
         } else {

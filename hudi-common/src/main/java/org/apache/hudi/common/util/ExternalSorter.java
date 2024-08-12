@@ -47,6 +47,9 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
 
   public static final String DEFAULT_BASE_PATH_PARENT = "/tmp/hudi/external-sorter";
 
+  // A timer for calculating elapsed time in millis
+  private final HoodieTimer timer = HoodieTimer.create();
+
   private final String basePath;
 
   private final long maxMemoryInBytes;
@@ -60,6 +63,7 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
   private int currentSortedFileIndex = 0;
   private long currentMemoryUsage = 0;
   private long totalEntryCount = 0;
+  private long totalTimeTakenToSortRecords;
 
   private SizeAwareDataOutputStream writeOnlyFileHandle;
   private File writeOnlyFile;
@@ -186,6 +190,7 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
   }
 
   private void sortAndWriteToFile() throws IOException {
+    // TODO: consider merge during sort
     memoryRecords.sort(comparator);
     for (T record : memoryRecords) {
       Entry entry = Entry.newEntry(SerializationUtils.serialize(record));
@@ -218,6 +223,7 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
   }
 
   private void sortedMerge() throws IOException {
+    this.timer.startTimer();
     int level = 0;
     int index = 0;
     while (currentLevelFiles.size() > 1) {
@@ -243,6 +249,7 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
       index = 0;
     }
     sortedFile = Option.of(currentLevelFiles.get(0));
+    this.totalTimeTakenToSortRecords = this.timer.endTimer();
   }
 
   private File mergeTwoFiles(File file1, File file2, int level, int index) throws IOException {
@@ -318,6 +325,7 @@ public class ExternalSorter<T extends Serializable> implements Closeable, Iterab
       currentLevelFiles.forEach(File::delete);
       sortedFile.ifPresent(File::delete);
       memoryRecords.clear();
+      LOG.debug("External sorter closed, stats: totalEntryCount=" + totalEntryCount + ", totalTimeTakenToSortRecords=" + totalTimeTakenToSortRecords);
     } catch (IOException e) {
       throw new HoodieIOException("Failed to close external sorter", e);
     }

@@ -46,7 +46,7 @@ import java.util.stream.IntStream;
 /**
  * A Single Record managed by Hoodie.
  */
-public abstract class HoodieRecord<T> extends BaseHoodieRecord implements HoodieRecordCompatibilityInterface, KryoSerializable {
+public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterface, KryoSerializable, Serializable {
 
   private static final long serialVersionUID = 3015229555587559252L;
   public static final String COMMIT_TIME_METADATA_FIELD = HoodieMetadataField.COMMIT_TIME_METADATA_FIELD.getFieldName();
@@ -116,6 +116,11 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
   public static int COMMIT_SEQNO_METADATA_FIELD_ORD = HOODIE_META_COLUMNS_NAME_TO_POS.get(COMMIT_SEQNO_METADATA_FIELD);
 
   /**
+   * Identifies the record across the table.
+   */
+  protected HoodieKey key;
+
+  /**
    * Actual payload of the record.
    */
   protected T data;
@@ -155,8 +160,7 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
   }
 
   public HoodieRecord(HoodieKey key, T data, HoodieOperation operation, Option<Map<String, String>> metaData) {
-    super(key);
-    // this.key = key;
+    this.key = key;
     this.data = data;
     this.currentLocation = null;
     this.newLocation = null;
@@ -172,8 +176,7 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
       HoodieOperation operation,
       HoodieRecordLocation currentLocation,
       HoodieRecordLocation newLocation) {
-    super(key);
-    // this.key = key;
+    this.key = key;
     this.data = data;
     this.currentLocation = currentLocation;
     this.newLocation = newLocation;
@@ -189,7 +192,6 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
   }
 
   public HoodieRecord() {
-    super(null);
   }
 
   public abstract HoodieRecord<T> newInstance();
@@ -200,6 +202,10 @@ public abstract class HoodieRecord<T> extends BaseHoodieRecord implements Hoodie
 
   public HoodieKey getKey() {
     return key;
+  }
+
+  public void setKey(HoodieKey key) {
+    this.key = key;
   }
 
   public HoodieOperation getOperation() {

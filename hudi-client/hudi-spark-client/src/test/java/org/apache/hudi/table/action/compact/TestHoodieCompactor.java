@@ -20,11 +20,8 @@ package org.apache.hudi.table.action.compact;
 
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.client.SparkRDDWriteClient;
-import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.config.HoodieMemoryConfig;
 import org.apache.hudi.common.config.HoodieStorageConfig;
-import org.apache.hudi.common.data.HoodieData;
-import org.apache.hudi.common.data.HoodieListData;
 import org.apache.hudi.common.model.FileSlice;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
@@ -35,7 +32,9 @@ import org.apache.hudi.common.table.timeline.HoodieInstant.State;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
 import org.apache.hudi.common.testutils.HoodieTestUtils;
+import org.apache.hudi.common.util.HoodieTimer;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieCompactionConfig;
 import org.apache.hudi.config.HoodieIndexConfig;
 import org.apache.hudi.config.HoodieWriteConfig;
@@ -48,6 +47,7 @@ import org.apache.hudi.metrics.HoodieMetrics;
 import org.apache.hudi.storage.HoodieStorageUtils;
 import org.apache.hudi.table.HoodieSparkTable;
 import org.apache.hudi.table.HoodieTable;
+import org.apache.hudi.table.action.HoodieWriteMetadata;
 import org.apache.hudi.testutils.HoodieSparkClientTestHarness;
 
 import com.codahale.metrics.Counter;
@@ -55,17 +55,23 @@ import org.apache.spark.api.java.JavaRDD;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
 
@@ -116,7 +122,7 @@ public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
         .withParallelism(2, 2)
         .withCompactionConfig(HoodieCompactionConfig.newBuilder().compactionSmallFileSize(1024 * 1024)
             .withInlineCompaction(false).build())
-        .withStorageConfig(HoodieStorageConfig.newBuilder().hfileMaxFileSize(1024 * 1024).parquetMaxFileSize(1024 * 1024).orcMaxFileSize(1024 * 1024).build())
+        .withStorageConfig(HoodieStorageConfig.newBuilder().hfileMaxFileSize(1024 * 1024).parquetMaxFileSize(4 * 1024 * 1024 * 1024).orcMaxFileSize(1024 * 1024).build())
         .withMemoryConfig(HoodieMemoryConfig.newBuilder().withMaxDFSStreamBufferSize(1 * 1024 * 1024).build())
         .forTable("test-trip-table")
         .withIndexConfig(HoodieIndexConfig.newBuilder().withIndexType(HoodieIndex.IndexType.BLOOM).build());
@@ -235,7 +241,7 @@ public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
         updateRecords(config, newCommitTime, records);
         assertLogFilesNumEqualsTo(config, i);
       }
-      HoodieData<WriteStatus> result = compact(writeClient, String.format("10%s", i));
+      HoodieWriteMetadata result = compact(writeClient, String.format("10%s", i));
       verifyCompaction(result);
 
       // Verify compaction.requested, compaction.completed metrics counts.
@@ -270,7 +276,7 @@ public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
 
         assertLogFilesNumEqualsTo(config, 1);
 
-        HoodieData<WriteStatus> result = compact(writeClient, "10" + (i + 1));
+        HoodieWriteMetadata result = compact(writeClient, "10" + (i + 1));
         verifyCompaction(result);
 
         // Verify compaction.requested, compaction.completed metrics counts.
@@ -278,6 +284,66 @@ public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
         assertEquals(i / 2 + 1, getCompactionMetricCount(HoodieTimeline.COMPLETED_COMPACTION_SUFFIX));
       }
     }
+  }
+
+  private static Stream<Arguments> testArguments() {
+    return Stream.of(
+        arguments(false),
+        arguments(true)
+    );
+  }
+
+  @ParameterizedTest
+  @MethodSource("testArguments")
+  public void benchCompaction(boolean sort) throws IOException {
+
+    int totalRecordNum = 100_000;
+    int recordPerSize = 600;
+    int updateTimesPerCompaction = 10;
+    int compactionTimes = 5;
+    double memoryRate = 0.1;
+
+    List<Pair<HoodieWriteMetadata, Long>> compactionCostTimes = new ArrayList<>();
+
+    long compactionMemMaxSize = (long) (totalRecordNum * recordPerSize * memoryRate);
+
+    HoodieTimer hoodieTimer = HoodieTimer.create();
+    // insert 100 records
+    HoodieWriteConfig config = getConfigBuilder()
+        .withCompactionConfig(HoodieCompactionConfig.newBuilder()
+            .withMaxNumDeltaCommitsBeforeCompaction(1)
+            .withSortedMergeCompaction(sort)
+            .build())
+        .withMemoryConfig(HoodieMemoryConfig.newBuilder()
+            .withMaxMemoryMaxSize(compactionMemMaxSize, compactionMemMaxSize).build()) // force spill
+        .withMetricsConfig(getMetricsConfig())
+        .build();
+
+    try (SparkRDDWriteClient writeClient = getHoodieWriteClient(config)) {
+      String newCommitTime = "100";
+      writeClient.startCommitWithTime(newCommitTime);
+
+      List<HoodieRecord> records = dataGen.generateInserts(newCommitTime, totalRecordNum);
+      JavaRDD<HoodieRecord> recordsRDD = jsc.parallelize(records, 1);
+      writeClient.insert(recordsRDD, newCommitTime).collect();
+
+      int commitTime = 101;
+      for (int i = 0; i < compactionTimes; i++) {
+        for (int j = 0; j < updateTimesPerCompaction; j++) {
+          updateRecords(config, String.valueOf(commitTime++), records);
+        }
+        assertLogFilesNumEqualsTo(config, updateTimesPerCompaction);
+        hoodieTimer.startTimer();
+        HoodieWriteMetadata compactMetadata = compact(writeClient, String.valueOf(commitTime++));
+        compactionCostTimes.add(Pair.of(compactMetadata, hoodieTimer.endTimer()));
+        verifyCompaction(compactMetadata);
+
+        // Verify compaction.requested, compaction.completed metrics counts.
+        assertEquals(i + 1, getCompactionMetricCount(HoodieTimeline.REQUESTED_COMPACTION_SUFFIX));
+        assertEquals(i + 1, getCompactionMetricCount(HoodieTimeline.COMPLETED_COMPACTION_SUFFIX));
+      }
+    }
+    System.out.println("Benchmark compaction results: " + compactionCostTimes);
   }
 
   @Override
@@ -317,26 +383,27 @@ public class TestHoodieCompactor extends HoodieSparkClientTestHarness {
   /**
    * Do a compaction.
    */
-  private HoodieData<WriteStatus> compact(SparkRDDWriteClient writeClient, String compactionInstantTime) {
+  private HoodieWriteMetadata compact(SparkRDDWriteClient writeClient, String compactionInstantTime) {
     writeClient.scheduleCompactionAtInstant(compactionInstantTime, Option.empty());
-    JavaRDD<WriteStatus> writeStatusJavaRDD = (JavaRDD<WriteStatus>) writeClient.compact(compactionInstantTime).getWriteStatuses();
-    return HoodieListData.eager(writeStatusJavaRDD.collect());
+    HoodieWriteMetadata compactMetadata = writeClient.compact(compactionInstantTime);
+    return compactMetadata;
   }
 
   /**
-   * Verify that all partition paths are present in the WriteStatus result.
+   * Verify that all partition paths are present in the HoodieWriteMetadata result.
    */
-  private void verifyCompaction(HoodieData<WriteStatus> result) {
-    List<WriteStatus> writeStatuses = result.collectAsList();
+  private void verifyCompaction(HoodieWriteMetadata compactionMetadata) {
+    assertTrue(compactionMetadata.getWriteStats().isPresent());
+    List<HoodieWriteStat> stats = (List<HoodieWriteStat>) compactionMetadata.getWriteStats().get();
     for (String partitionPath : dataGen.getPartitionPaths()) {
-      assertTrue(writeStatuses.stream().anyMatch(writeStatus -> writeStatus.getStat().getPartitionPath().contentEquals(partitionPath)));
+      assertTrue(stats.stream().anyMatch(stat -> stat.getPartitionPath().contentEquals(partitionPath)));
     }
-    writeStatuses.forEach(writeStatus -> {
-      final HoodieWriteStat.RuntimeStats stats = writeStatus.getStat().getRuntimeStats();
-      assertNotNull(stats);
-      assertEquals(stats.getTotalCreateTime(), 0);
-      assertTrue(stats.getTotalUpsertTime() > 0);
-      assertTrue(stats.getTotalScanTime() > 0);
+    stats.forEach(stat -> {
+      HoodieWriteStat.RuntimeStats runtimeStats = stat.getRuntimeStats();
+      assertNotNull(runtimeStats);
+      assertEquals(0, runtimeStats.getTotalCreateTime());
+      assertTrue(runtimeStats.getTotalUpsertTime() > 0);
+      assertTrue(runtimeStats.getTotalScanTime() > 0);
     });
   }
 }

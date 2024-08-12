@@ -22,7 +22,7 @@ import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.CompactionOperation;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.table.log.AbstractHoodieLogRecordReader;
+import org.apache.hudi.common.table.log.AbstractHoodieLogRecordScanner;
 import org.apache.hudi.common.table.log.HoodieMergedLogRecordScanner;
 import org.apache.hudi.common.table.log.HoodieUnMergedSortedLogRecordScanner;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
@@ -76,7 +76,7 @@ public class CompactionExecutionHelper<T extends HoodieRecordPayload, I, K, O> i
   protected Iterator<List<WriteStatus>> writeFileAndGetWriteStats(HoodieCompactionHandler compactionHandler,
                                                                   CompactionOperation operation,
                                                                   String instantTime,
-                                                                  AbstractHoodieLogRecordReader scanner,
+                                                                  AbstractHoodieLogRecordScanner scanner,
                                                                   Option<HoodieBaseFile> oldDataFileOpt) throws IOException {
     if (scanner instanceof HoodieUnMergedSortedLogRecordScanner) {
       return writeFileAndGetWriteStats(compactionHandler, operation, instantTime, (HoodieUnMergedSortedLogRecordScanner) scanner, oldDataFileOpt);

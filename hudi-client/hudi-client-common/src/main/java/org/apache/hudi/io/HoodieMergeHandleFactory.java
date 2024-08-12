@@ -19,7 +19,6 @@
 package org.apache.hudi.io;
 
 import org.apache.hudi.common.engine.TaskContextSupplier;
-import org.apache.hudi.common.model.BaseHoodieRecord;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.WriteOperationType;
@@ -110,7 +109,7 @@ public class HoodieMergeHandleFactory {
       HoodieWriteConfig writeConfig,
       String instantTime,
       HoodieTable<T, I, K, O> table,
-      Iterator<BaseHoodieRecord> recordItr,
+      Iterator<HoodieRecord> recordItr,
       String partitionPath,
       String fileId,
       HoodieBaseFile dataFileToBeMerged,

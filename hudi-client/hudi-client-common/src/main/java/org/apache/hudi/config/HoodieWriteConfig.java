@@ -2742,6 +2742,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return metadataConfig.getSecondaryIndexParallelism();
   }
 
+  public boolean isSortedMergeCompactionEnabled() {
+    return commonConfig.getBoolean(HoodieCompactionConfig.SORTED_MERGE_COMPACTION);
+  }
+
   public static class Builder {
 
     protected final HoodieWriteConfig writeConfig = new HoodieWriteConfig();

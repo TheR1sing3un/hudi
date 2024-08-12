@@ -18,10 +18,7 @@
 
 package org.apache.hudi.common.model;
 
-import org.apache.avro.Schema;
-
 import java.util.Objects;
-import java.util.Properties;
 
 /**
  * Delete record is a combination of HoodieKey and ordering value.
@@ -40,8 +37,13 @@ import java.util.Properties;
  *
  *       Check out HUDI-5760 for more details
  */
-public class DeleteRecord extends BaseHoodieRecord {
+public class DeleteRecord {
   private static final long serialVersionUID = 1L;
+
+  /**
+   * The record key and partition path.
+   */
+  private final HoodieKey hoodieKey;
 
   /**
    * For purposes of preCombining.
@@ -49,8 +51,7 @@ public class DeleteRecord extends BaseHoodieRecord {
   private final Comparable<?> orderingVal;
 
   private DeleteRecord(HoodieKey hoodieKey, Comparable orderingVal) {
-    // this.hoodieKey = hoodieKey;
-    super(hoodieKey);
+    this.hoodieKey = hoodieKey;
     this.orderingVal = orderingVal;
   }
 
@@ -71,15 +72,15 @@ public class DeleteRecord extends BaseHoodieRecord {
   }
 
   public String getRecordKey() {
-    return key.getRecordKey();
+    return hoodieKey.getRecordKey();
   }
 
   public String getPartitionPath() {
-    return key.getPartitionPath();
+    return hoodieKey.getPartitionPath();
   }
 
   public HoodieKey getHoodieKey() {
-    return key;
+    return hoodieKey;
   }
 
   public Comparable<?> getOrderingValue() {
@@ -95,24 +96,19 @@ public class DeleteRecord extends BaseHoodieRecord {
       return false;
     }
     DeleteRecord that = (DeleteRecord) o;
-    return this.key.equals(that.key) && this.orderingVal.equals(that.orderingVal);
+    return this.hoodieKey.equals(that.hoodieKey) && this.orderingVal.equals(that.orderingVal);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.key, this.orderingVal);
+    return Objects.hash(this.hoodieKey, this.orderingVal);
   }
 
   @Override
   public String toString() {
     return "DeleteRecord {"
-            + " key=" + key
+            + " key=" + hoodieKey
             + " orderingVal=" + this.orderingVal
             + '}';
-  }
-
-  @Override
-  public Comparable<?> getOrderingValue(Schema recordSchema, Properties props) {
-    return orderingVal;
   }
 }
