@@ -198,7 +198,8 @@ public class HoodieMergeHelper<T> extends BaseMergeHelper {
         // In case writer's schema is simply a projection of the reader's one we can read
         // the records in the projected schema directly
         recordSchema = isPureProjection ? writerSchema : readerSchema;
-        if (writeConfig.isSortedMergeCompactionEnabled()) {
+        // Only open sorted merge compaction when merge-handle is for compaction and sorted merge is enabled
+        if (mergeHandle.isCompaction() && writeConfig.isSortedMergeCompactionEnabled()) {
           long maxMemoryPerCompaction = IOUtils.getMaxMemoryPerCompaction(table.getTaskContextSupplier(), writeConfig);
           recordIterator = getBaseFileRecordIterator(baseFileReader, recordSchema, mergeHandle, true, maxMemoryPerCompaction);
         } else {
