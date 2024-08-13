@@ -104,8 +104,6 @@ public class TestCompactionData extends HoodieClientTestBase {
     HoodieSparkWriteableTestTable.of(metaClient);
   }
 
-  //TODO: include both the table's contents.
-
   /**
    * Cleanups resource group for the subclasses of {@link HoodieClientTestBase}.
    */
@@ -120,16 +118,9 @@ public class TestCompactionData extends HoodieClientTestBase {
     System.gc();
   }
 
-  /**
-   * Stress test logcompaction along with compaction by following approach.
-   * a. Create a random seed to do insert/upsert/deleting operations on main table and replicate same action on experiment table.
-   * b. Schedule inline major compaction to run for every 5 deltacommits on both the tables.
-   * c. After writes on both the tables configure log compaction to run on second table and keep no. of blocks threshold to 2.
-   * d. After every commit operation refresh the timeline and run a validation query for all the records.
-   */
   @ParameterizedTest
   @ValueSource(ints = {17})
-  public void stressTestCompactionAndLogCompactionOperations(int seed) throws Exception {
+  public void stressTestCompactions(int seed) throws Exception {
 
     // Set seed.
     random.setSeed(seed);
@@ -140,27 +131,20 @@ public class TestCompactionData extends HoodieClientTestBase {
     // Setup second table.
     TestCompactionData.TestTableContents experimentTable1 = setupTestTable2();
 
-    // Setup second table.
+    // Setup third table.
     TestCompactionData.TestTableContents experimentTable2 = setupTestTable3();
 
-    // Total ingestion writes.
-    int totalWrites = 15;
+    // Initialize the first write action to be `insert`.
+    writeOnMainTable(mainTable, WriteAction.INSERT);
+    writeOnExperimentTable(mainTable, experimentTable1);
+    writeOnExperimentTable(mainTable, experimentTable2);
 
-    LOG.warn("Starting trial with seed " + seed);
+    int totalCompactions = 10;
+    int compactionCount = 0;
 
-    // Current ingestion commit.
-    int curr = 1;
-    while (curr < totalWrites) {
-      LOG.warn("Starting write No. " + curr);
-
-      // Pick an action. It can be insert/update/delete and write data to main table.
-      boolean status = writeOnMainTable(mainTable, curr);
-      if (status) {
-        // Write data into experiment table.
-        writeOnExperimentTable(mainTable, experimentTable1);
-
-        writeOnExperimentTable(mainTable, experimentTable2);
-
+    while (compactionCount < totalCompactions) {
+      WriteAction action = pickAWriteAction();
+      if (action == WriteAction.COMPACT) {
         // schedule and run compaction on second table.
         scheduleCompactionOnExperimentTable(experimentTable1);
 
@@ -175,9 +159,14 @@ public class TestCompactionData extends HoodieClientTestBase {
         verifyRecords(mainTable, experimentTable1);
         verifyRecords(mainTable, experimentTable2);
         verifyRecords(experimentTable1, experimentTable2);
-        LOG.warn("For write No." + curr + ", verification passed. Last ingestion commit timestamp is " + mainTable.commitTimeOnMainTable);
+        LOG.warn("For compaction No." + compactionCount + ", verification passed. Last ingestion commit timestamp is " + mainTable.commitTimeOnMainTable);
+        compactionCount++;
+      } else {
+        writeOnMainTable(mainTable, action);
+        // Write data into experiment table.
+        writeOnExperimentTable(mainTable, experimentTable1);
+        writeOnExperimentTable(mainTable, experimentTable2);
       }
-      curr++;
     }
     mainTable.client.close();
     experimentTable1.client.close();
@@ -212,42 +201,53 @@ public class TestCompactionData extends HoodieClientTestBase {
     }
   }
 
-  private boolean writeOnMainTable(TestCompactionData.TestTableContents mainTable, int curr) throws IOException {
+  private boolean writeOnMainTable(TestCompactionData.TestTableContents mainTable, WriteAction action) throws IOException {
     String commitTime = mainTable.client.createNewInstantTime();
     mainTable.client.startCommitWithTime(commitTime);
 
-    int actionType = pickAWriteAction();
-    LOG.warn("For write No." + curr + ", actionType is " + actionType);
     JavaRDD<WriteStatus> result;
-    if (curr == 1 || actionType == 0) {
-      result = insertDataIntoMainTable(mainTable, commitTime);
-    } else {
-      try {
-        if (actionType == 1) {
-          result = updateDataIntoMainTable(mainTable, commitTime);
-        } else {
-          result = deleteDataIntoMainTable(mainTable, commitTime);
-        }
-      } catch (IllegalArgumentException e) {
-        LOG.warn(e.getMessage() + " ignoring current command.");
-        return false;
-      }
+    switch (action) {
+      case INSERT:
+        result = insertDataIntoMainTable(mainTable, commitTime);
+        break;
+      case UPSERT:
+        result = updateDataIntoMainTable(mainTable, commitTime);
+        break;
+      case DELETE:
+        result = deleteDataIntoMainTable(mainTable, commitTime);
+        break;
+      case COMPACT:
+        throw new IllegalArgumentException("Cannot perform compaction on main table.");
+      default:
+        throw new IllegalArgumentException("Unknown action type " + action);
     }
     verifyWriteStatus(result);
     return true;
   }
 
   /**
-   * This method has 50% chance to pick an insert, 30% chance to pick an update and 20% chance to pick a delete operation
+   * 40% insert, 30% upsert, 20% delete, 10% compact.
    */
-  private int pickAWriteAction() {
+  private WriteAction pickAWriteAction() {
     int val = random.nextInt(10);
-    if (val < 5) {
-      return 0;
-    } else if (val < 8) {
-      return 1;
+
+    if (val < 4) {
+      return WriteAction.INSERT;
     }
-    return 2;
+    if (val < 7) {
+      return WriteAction.UPSERT;
+    }
+    if (val < 9) {
+      return WriteAction.DELETE;
+    }
+    return WriteAction.COMPACT;
+  }
+
+  private enum WriteAction {
+    INSERT,
+    UPSERT,
+    DELETE,
+    COMPACT
   }
 
   private void writeOnExperimentTable(TestCompactionData.TestTableContents mainTable, TestCompactionData.TestTableContents experimentTable) throws IOException {
@@ -383,7 +383,6 @@ public class TestCompactionData extends HoodieClientTestBase {
     Properties properties = new Properties();
     properties.put(HoodieTableConfig.NAME.key(), tableName2);
 
-    // Create metaclient
     HoodieTableMetaClient metaClient2 = HoodieTestUtils.init(storageConf, basePath2,
         HoodieTableType.MERGE_ON_READ, properties);
     HoodieWriteConfig config2 = getConfigBuilderForSecondTable(tableName2, basePath2,
@@ -404,7 +403,6 @@ public class TestCompactionData extends HoodieClientTestBase {
     Properties properties = new Properties();
     properties.put(HoodieTableConfig.NAME.key(), tableName2);
 
-    // Create metaclient
     HoodieTableMetaClient metaClient2 = HoodieTestUtils.init(storageConf, basePath2,
         HoodieTableType.MERGE_ON_READ, properties);
     HoodieWriteConfig config2 = getConfigBuilderForSecondTable(tableName2, basePath2,
