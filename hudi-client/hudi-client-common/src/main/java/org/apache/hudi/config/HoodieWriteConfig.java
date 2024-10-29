@@ -1261,6 +1261,10 @@ public class HoodieWriteConfig extends HoodieConfig {
         HoodieTableConfig.CDC_ENABLED, HoodieTableConfig.CDC_ENABLED.defaultValue());
   }
 
+  public boolean isExtensibleBucketEnable() {
+    return HoodieIndex.IndexType.BUCKET.equals(getIndexType()) && HoodieIndex.BucketIndexEngineType.EXTENSIBLE_BUCKET.equals(getBucketIndexEngineType());
+  }
+
   public boolean isConsistentLogicalTimestampEnabled() {
     return getBooleanOrDefault(KeyGeneratorOptions.KEYGENERATOR_CONSISTENT_LOGICAL_TIMESTAMP_ENABLED);
   }
