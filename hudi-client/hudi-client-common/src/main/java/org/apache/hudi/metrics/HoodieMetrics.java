@@ -21,6 +21,7 @@ package org.apache.hudi.metrics;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.VisibleForTesting;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.config.HoodieWriteConfig;
@@ -53,6 +54,25 @@ public class HoodieMetrics {
   public static final String TOTAL_RECORDS_DELETED = "totalRecordsDeleted";
   public static final String TOTAL_CORRUPTED_LOG_BLOCKS_STR = "totalCorruptedLogBlocks";
   public static final String TOTAL_ROLLBACK_LOG_BLOCKS_STR = "totalRollbackLogBlocks";
+
+  /*   --------------- Partition Level Metrics  ---------------   */
+  public static final String LOG_RECORDS_SCAN_TIME = "logRecordsScanTime";
+  public static final String CREATE_OR_UPSERT_TIME = "createTimeOrUpsertTime";
+  // Operation time means the time taken to perform the operation on the partition, equals to the sum of createTime/updateTime and logRecordsScanTime
+  public static final String OPERATION_TIME = "operationTime";
+  public static final String WRITE_RECORDS_NUM = "writeRecordsNum";
+  public static final String UPDATE_RECORDS_NUM = "updateRecordsNum";
+  public static final String INSERT_RECORDS_NUM = "insertRecordsNum";
+  public static final String DELETE_RECORDS_NUM = "deleteRecordsNum";
+  public static final String BYTES_WRITTEN = "bytesWritten";
+  // The ratio of spilled log records to total log records
+  public static final String LOG_RECORDS_SPILL_PERCENT = "logRecordsSpillPercent";
+  public static final String MAX_MEMORY_FOR_COMPACTION = "maxMemoryForCompaction";
+
+
+  public static final String PARTITION_LEVEL_PREFIX = "partition=";
+  public static final String UN_PARTITIONED_TABLE_METRIC_NAME = "UN_PARTITIONED_METRICS";
+  /*   --------------- Partition Level Metrics  ---------------   */
 
   private Metrics metrics;
   // Some timers
@@ -246,6 +266,22 @@ public class HoodieMetrics {
         metrics.registerGauge(getMetricsName(actionType, TOTAL_CORRUPTED_LOG_BLOCKS_STR), totalCorruptedLogBlocks);
         metrics.registerGauge(getMetricsName(actionType, TOTAL_ROLLBACK_LOG_BLOCKS_STR), totalRollbackLogBlocks);
       }
+      if (config.isPartitionLevelMetricsOn()) {
+        metadata.getPartitionToWriteStats().values().stream().flatMap(stats -> stats.stream()).forEach(stat -> {
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), LOG_RECORDS_SCAN_TIME), stat.getRuntimeStats().getTotalScanTime());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), CREATE_OR_UPSERT_TIME),
+              stat.getRuntimeStats().getTotalCreateTime() + stat.getRuntimeStats().getTotalUpsertTime());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), OPERATION_TIME),
+              stat.getRuntimeStats().getTotalScanTime() + stat.getRuntimeStats().getTotalCreateTime() + stat.getRuntimeStats().getTotalUpsertTime());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), WRITE_RECORDS_NUM), stat.getNumWrites());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), UPDATE_RECORDS_NUM), stat.getNumUpdateWrites());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), INSERT_RECORDS_NUM), stat.getNumInserts());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), DELETE_RECORDS_NUM), stat.getNumDeletes());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), BYTES_WRITTEN), stat.getTotalWriteBytes());
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), LOG_RECORDS_SPILL_PERCENT), (long) (stat.getRuntimeStats().getLogRecordsSpillRatio() * 100));
+          metrics.registerHistogram(getPartitionMetricsName(actionType, stat.getPartitionPath(), MAX_MEMORY_FOR_COMPACTION), stat.getRuntimeStats().getMaxMemoryForCompaction());
+        });
+      }
     }
   }
 
@@ -303,6 +339,11 @@ public class HoodieMetrics {
   @VisibleForTesting
   public String getMetricsName(String action, String metric) {
     return config == null ? null : String.format("%s.%s.%s", config.getMetricReporterMetricsNamePrefix(), action, metric);
+  }
+
+  public String getPartitionMetricsName(String action, String partition, String metric) {
+    partition = StringUtils.isNullOrEmpty(partition) ? UN_PARTITIONED_TABLE_METRIC_NAME : partition;
+    return config == null ? null : String.format("%s.%s.%s.%s", config.getMetricReporterMetricsNamePrefix(), action, PARTITION_LEVEL_PREFIX + partition, metric);
   }
 
   public void updateClusteringFileCreationMetrics(long durationInMs) {

@@ -151,6 +151,15 @@ public class Metrics {
     }
   }
 
+  public void registerHistograms(Map<String/*metric name*/, Long/*updated value*/> metricsMap, Option<String> prefix) {
+    String metricPrefix = prefix.isPresent() ? prefix.get() + "." : "";
+    metricsMap.forEach((k, v) -> registerHistogram(metricPrefix + k, v));
+  }
+
+  public void registerHistogram(String metricName, long value) {
+    registry.histogram(metricName, () -> new HoodieHistogram()).update(value);
+  }
+
   public MetricRegistry getRegistry() {
     return registry;
   }

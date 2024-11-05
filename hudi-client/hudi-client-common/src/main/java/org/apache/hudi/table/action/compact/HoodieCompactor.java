@@ -249,6 +249,8 @@ public abstract class HoodieCompactor<T, I, K, O> implements Serializable {
       s.getStat().setTotalRollbackBlocks(scanner.getTotalRollbacks());
       RuntimeStats runtimeStats = new RuntimeStats();
       runtimeStats.setTotalScanTime(scanner.getTotalTimeTakenToReadAndMergeBlocks());
+      runtimeStats.setLogRecordsSpillRatio(scanner.getSpillRatio());
+      runtimeStats.setMaxMemoryForCompaction(maxMemoryPerCompaction);
       s.getStat().setRuntimeStats(runtimeStats);
     }).collect(toList());
   }
