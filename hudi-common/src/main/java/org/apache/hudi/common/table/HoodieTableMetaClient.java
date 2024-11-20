@@ -93,7 +93,11 @@ public class HoodieTableMetaClient implements Serializable {
   public static final String SAMPLE_WRITES_FOLDER_PATH = AUXILIARYFOLDER_NAME + Path.SEPARATOR + ".sample_writes";
   public static final String HEARTBEAT_FOLDER_NAME = METAFOLDER_NAME + Path.SEPARATOR + ".heartbeat";
   public static final String METADATA_TABLE_FOLDER_PATH = METAFOLDER_NAME + Path.SEPARATOR + "metadata";
-  public static final String HASHING_METADATA_FOLDER_NAME = ".bucket_index" + Path.SEPARATOR + "consistent_hashing_metadata";
+  public static final String BUCKET_INDEX_METADATA_FOLDER_NAME = ".bucket_index";
+  public static final String HASHING_METADATA_FOLDER_NAME =
+      BUCKET_INDEX_METADATA_FOLDER_NAME + Path.SEPARATOR + "consistent_hashing_metadata";
+  public static final String EXTENSIBLE_BUCKET_METADATA_FOLDER_NAME =
+      BUCKET_INDEX_METADATA_FOLDER_NAME + Path.SEPARATOR + "extensible_bucket_metadata";
   public static final String BOOTSTRAP_INDEX_BY_PARTITION_FOLDER_PATH = BOOTSTRAP_INDEX_ROOT_FOLDER_PATH
       + Path.SEPARATOR + ".partitions";
   public static final String BOOTSTRAP_INDEX_BY_FILE_ID_FOLDER_PATH = BOOTSTRAP_INDEX_ROOT_FOLDER_PATH + Path.SEPARATOR
@@ -234,6 +238,13 @@ public class HoodieTableMetaClient implements Serializable {
    */
   public String getHashingMetadataPath() {
     return new Path(metaPath.get(), HASHING_METADATA_FOLDER_NAME).toString();
+  }
+
+  /**
+   * @return Extensible bucket metadata base path
+   */
+  public String getExtensibleBucketMetadataPath() {
+    return new StoragePath(metaPath, EXTENSIBLE_BUCKET_METADATA_FOLDER_NAME).toString();
   }
 
   /**
@@ -814,6 +825,8 @@ public class HoodieTableMetaClient implements Serializable {
     private String inflightMetadataPartitions;
     private String secondaryIndexesMetadata;
 
+    private Integer initialBucketNumberForNewPartition;
+
     /**
      * Persist the configs that is written at the first time, and should not be changed.
      * Like KeyGenerator's configs.
@@ -967,6 +980,11 @@ public class HoodieTableMetaClient implements Serializable {
       return this;
     }
 
+    public PropertyBuilder setInitialBucketNumberForNewPartition(Integer initialBucketNumberForNewPartition) {
+      this.initialBucketNumberForNewPartition = initialBucketNumberForNewPartition;
+      return this;
+    }
+
     public PropertyBuilder set(Map<String, Object> props) {
       for (ConfigProperty<String> configProperty : HoodieTableConfig.PERSISTED_CONFIG_LIST) {
         if (containsConfigProperty(props, configProperty)) {
@@ -1085,6 +1103,9 @@ public class HoodieTableMetaClient implements Serializable {
       if (hoodieConfig.contains(HoodieTableConfig.SECONDARY_INDEXES_METADATA)) {
         setSecondaryIndexesMetadata(hoodieConfig.getString(HoodieTableConfig.SECONDARY_INDEXES_METADATA));
       }
+      if (hoodieConfig.contains(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION)) {
+        setInitialBucketNumberForNewPartition(hoodieConfig.getInt(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION));
+      }
       return this;
     }
 
@@ -1186,6 +1207,9 @@ public class HoodieTableMetaClient implements Serializable {
       }
       if (null != secondaryIndexesMetadata) {
         tableConfig.setValue(HoodieTableConfig.SECONDARY_INDEXES_METADATA, secondaryIndexesMetadata);
+      }
+      if (null != initialBucketNumberForNewPartition) {
+        tableConfig.setValue(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION, initialBucketNumberForNewPartition.toString());
       }
       return tableConfig.getProps();
     }

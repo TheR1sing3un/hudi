@@ -153,6 +153,12 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
    */
   protected Option<Map<String, String>> metaData;
 
+  /**
+   * If set, mark this record as dual write record.
+   * When performs writing to during-extensible-bucket-resizing bucket, we need to write the record to both old and new bucket.
+   */
+  private boolean isDualWriteRecord;
+
   public HoodieRecord(HoodieKey key, T data) {
     this(key, data, null, Option.empty());
   }
@@ -166,6 +172,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     this.ignoreIndexUpdate = false;
     this.operation = operation;
     this.metaData = metaData;
+    this.isDualWriteRecord = false;
   }
 
   public HoodieRecord(
@@ -187,6 +194,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     this.newLocation = record.newLocation;
     this.sealed = record.sealed;
     this.ignoreIndexUpdate = record.ignoreIndexUpdate;
+    this.isDualWriteRecord = record.isDualWriteRecord;
   }
 
   public HoodieRecord() {}
@@ -266,6 +274,15 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     return this.ignoreIndexUpdate;
   }
 
+  public void setDualWriteRecord(boolean isDualWriteRecord) {
+    checkState();
+    this.isDualWriteRecord = isDualWriteRecord;
+  }
+
+  public boolean isDualWriteRecord() {
+    return this.isDualWriteRecord;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -277,7 +294,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     HoodieRecord that = (HoodieRecord) o;
     return Objects.equals(key, that.key) && Objects.equals(data, that.data)
         && Objects.equals(currentLocation, that.currentLocation) && Objects.equals(newLocation, that.newLocation)
-        && Objects.equals(ignoreIndexUpdate, that.ignoreIndexUpdate);
+        && Objects.equals(ignoreIndexUpdate, that.ignoreIndexUpdate) && Objects.equals(isDualWriteRecord, that.isDualWriteRecord);
   }
 
   @Override
@@ -330,7 +347,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
   protected abstract T readRecordPayload(Kryo kryo, Input input);
 
   /**
-   * Clears the new currentLocation of the record. 
+   * Clears the new currentLocation of the record.
    *
    * This is required in the delete path so that Index can track that this record was deleted.
    */
@@ -355,6 +372,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     //       implementation
     writeRecordPayload(data, kryo, output);
     kryo.writeObjectOrNull(output, ignoreIndexUpdate, Boolean.class);
+    kryo.writeObjectOrNull(output, isDualWriteRecord, Boolean.class);
   }
 
   /**
@@ -371,6 +389,7 @@ public abstract class HoodieRecord<T> implements HoodieRecordCompatibilityInterf
     //       implementation
     this.data = readRecordPayload(kryo, input);
     this.ignoreIndexUpdate = kryo.readObjectOrNull(input, Boolean.class);
+    this.isDualWriteRecord = kryo.readObjectOrNull(input, Boolean.class);
 
     // NOTE: We're always seal object after deserialization
     this.sealed = true;

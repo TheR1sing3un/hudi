@@ -47,6 +47,7 @@ import org.apache.hudi.common.table.log.block.HoodieParquetDataBlock;
 import org.apache.hudi.common.table.timeline.HoodieInstantTimeGenerator;
 import org.apache.hudi.common.table.view.TableFileSystemView.SliceView;
 import org.apache.hudi.common.util.DefaultSizeEstimator;
+import org.apache.hudi.common.util.HoodieRecordUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.SizeEstimator;
@@ -225,6 +226,25 @@ public class HoodieAppendHandle<T, I, K, O> extends HoodieWriteHandle<T, I, K, O
       }
       doInit = false;
     }
+  }
+
+  /**
+   * Returns the instant time to use in the log file name.
+   */
+  private String getInstantTimeForLogFile(HoodieRecord<?> record) {
+    // extensible-bucket and current record is dual-write record, we use its instant (for extensible-bucket-resizing, value is the clustering operation instant)
+    if (config.isExtensibleBucketEnable() && record.isDualWriteRecord()) {
+      // Handle log file only case. This is necessary for the concurrent clustering and writer case (e.g., extensible bucket index).
+      // NOTE: flink engine use instantTime to mark operation type, check BaseFlinkCommitActionExecutor::execute
+      String taggedInstant = HoodieRecordUtils.getCurrentLocationInstant(record);
+      if (!HoodieInstantTimeGenerator.isValidInstantTime(taggedInstant) || instantTime.equals(taggedInstant)) {
+        // the tagged instant is invalid or the same as the current instant which is not expected.
+        LOG.error("For dual write record :{} , found invalid instant time in record , current instant :{}", record, instantTime);
+        throw new HoodieUpsertException("For dual write record : " + record + " , found invalid instant time in record , current instant :" + instantTime);
+      }
+      return taggedInstant;
+    }
+    return instantTime;
   }
 
   /**

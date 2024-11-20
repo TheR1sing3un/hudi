@@ -33,6 +33,8 @@ public class BucketIdentifier implements Serializable {
   // Compatible with the spark bucket name
   private static final Pattern BUCKET_NAME = Pattern.compile(".*_(\\d+)(?:\\..*)?$");
 
+  private static final String EXTENSIBLE_FILE_IDE_SUFFIX = "-0000-0000-000000000000";
+
   public static int getBucketId(HoodieRecord record, String indexKeyFields, int numBuckets) {
     return getBucketId(record.getKey(), indexKeyFields, numBuckets);
   }
@@ -46,6 +48,10 @@ public class BucketIdentifier implements Serializable {
   }
 
   public static int getBucketId(String recordKey, String indexKeyFields, int numBuckets) {
+    return getBucketId(getHashKeys(recordKey, indexKeyFields), numBuckets);
+  }
+
+  public static int getBucketId(String recordKey, List<String> indexKeyFields, int numBuckets) {
     return getBucketId(getHashKeys(recordKey, indexKeyFields), numBuckets);
   }
 
@@ -97,6 +103,14 @@ public class BucketIdentifier implements Serializable {
 
   public static String newBucketFileIdPrefix(String bucketId) {
     return FSUtils.createNewFileIdPfx().replaceFirst(".{8}", bucketId);
+  }
+
+  public static String newExtensibleBucketFileIdFixedSuffix(int bucketId, short version) {
+    return bucketIdStr(bucketId) + "-" + bucketVersionStr(version) + EXTENSIBLE_FILE_IDE_SUFFIX;
+  }
+
+  private static String bucketVersionStr(short version) {
+    return String.format("%04d", version);
   }
 
   public static boolean isBucketFileName(String name) {

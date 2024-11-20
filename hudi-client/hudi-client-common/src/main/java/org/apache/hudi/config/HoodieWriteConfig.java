@@ -51,6 +51,7 @@ import org.apache.hudi.common.table.view.FileSystemViewStorageConfig;
 import org.apache.hudi.common.util.ConfigUtils;
 import org.apache.hudi.common.util.FileIOUtils;
 import org.apache.hudi.common.util.HoodieRecordUtils;
+import org.apache.hudi.common.util.MathUtils;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.StringUtils;
@@ -76,6 +77,7 @@ import org.apache.hudi.metrics.datadog.DatadogHttpClient.ApiSite;
 import org.apache.hudi.table.RandomFileIdPrefixProvider;
 import org.apache.hudi.table.action.clean.CleaningTriggerStrategy;
 import org.apache.hudi.table.action.cluster.ClusteringPlanPartitionFilterMode;
+import org.apache.hudi.table.action.cluster.strategy.BaseExtensibleBucketClusteringPlanStrategy;
 import org.apache.hudi.table.action.compact.CompactionTriggerStrategy;
 import org.apache.hudi.table.action.compact.strategy.CompactionStrategy;
 import org.apache.hudi.table.storage.HoodieStorageLayout;
@@ -1756,6 +1758,17 @@ public class HoodieWriteConfig extends HoodieConfig {
 
   public int getLayoutOptimizationSampleSize() {
     return getInt(HoodieClusteringConfig.LAYOUT_OPTIMIZE_BUILD_CURVE_SAMPLE_SIZE);
+  }
+
+  public BaseExtensibleBucketClusteringPlanStrategy.ExtensibleBucketResizingPlanMode getBucketResizingPlanMode() {
+    return BaseExtensibleBucketClusteringPlanStrategy.ExtensibleBucketResizingPlanMode.valueOf(getString(HoodieClusteringConfig.BUCKET_RESIZING_PLAN_MODE));
+  }
+
+  public int getBucketResizingTargetNum() {
+    Integer targetNum = getInt(HoodieClusteringConfig.BUCKET_RESIZING_TARGET_NUM);
+    // check target-num if match power of 2
+    checkArgument(MathUtils.isPowerOf2(targetNum), "bucket-resizing target-num should be power of 2");
+    return targetNum;
   }
 
   /**

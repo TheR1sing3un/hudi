@@ -263,6 +263,12 @@ public class HoodieTableConfig extends HoodieConfig {
       .sinceVersion("0.13.0")
       .withDocumentation("The metadata of secondary indexes");
 
+  public static final ConfigProperty<Integer> INITIAL_BUCKET_NUM_FOR_NEW_PARTITION = ConfigProperty
+      .key("hoodie.table.initial.bucket.number")
+      .defaultValue(256)
+      .sinceVersion("0.14.0")
+      .withDocumentation("Initial bucket number for new partition");
+
   private static final String TABLE_CHECKSUM_FORMAT = "%s.%s"; // <database_name>.<table_name>
 
   // Number of retries while reading the properties file to deal with parallel updates
@@ -733,6 +739,10 @@ public class HoodieTableConfig extends HoodieConfig {
     return new HashSet<>(
         StringUtils.split(getStringOrDefault(TABLE_METADATA_PARTITIONS, StringUtils.EMPTY_STRING),
             CONFIG_VALUES_DELIMITER));
+  }
+
+  public int getInitialBucketNumberForNewPartition() {
+    return getInt(INITIAL_BUCKET_NUM_FOR_NEW_PARTITION);
   }
 
   /**

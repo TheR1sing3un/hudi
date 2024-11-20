@@ -95,4 +95,11 @@ public class HoodieRecordLocation implements Serializable, KryoSerializable {
     this.instantTime = input.readString();
     this.fileId = input.readString();
   }
+
+  /**
+   * Check if this is a logical location, file-id calculated by index(i.e: extensible-bucket, consistent-hash-bucket) but file-group not exist in fs.
+   */
+  public boolean isLogicalLocation() {
+    return fileId != null && instantTime == null;
+  }
 }
