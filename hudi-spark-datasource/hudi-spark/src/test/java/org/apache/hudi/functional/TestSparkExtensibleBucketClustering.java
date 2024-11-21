@@ -31,6 +31,7 @@ import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
 import org.apache.hudi.common.testutils.HoodieTestUtils;
 import org.apache.hudi.common.util.Option;
@@ -92,7 +93,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     initPath();
     initSparkContexts();
     initTestDataGenerator();
-    initHoodieStorage();
+    initFileSystem();
     Properties pros = getPropertiesForKeyGen(true);
     pros.putAll(options);
     pros.setProperty(KeyGeneratorOptions.RECORDKEY_FIELD_NAME.key(), "_row_key");
@@ -100,7 +101,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     if (initBucketNum == null) {
       pros.setProperty(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION.key(), "8");
     }
-    metaClient = HoodieTestUtils.init(storageConf, basePath, HoodieTableType.MERGE_ON_READ, pros);
+    metaClient = HoodieTestUtils.init(hadoopConf, basePath, HoodieTableType.MERGE_ON_READ, pros);
     config = getConfigBuilder().withProps(pros)
         .withAutoCommit(false)
         .withIndexConfig(HoodieIndexConfig.newBuilder().fromProperties(pros)
@@ -143,8 +144,8 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     setUp(maxFileSize, targetBucketNum);
     config.setValue("hoodie.datasource.write.row.writer.enable", String.valueOf(rowWriterEnable));
     config.setValue("hoodie.metadata.enable", "false");
-    writeData(writeClient.createNewInstantTime(), 2000, true);
-    writeData(writeClient.createNewInstantTime(), 1000, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 2000, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 1000, true);
     List<Row> expectedRows = readRecordsSortedByPK();
     String clusteringTime = (String) writeClient.scheduleClustering(Option.empty()).get();
     List<Row> actualRows = readRecordsSortedByPK();
@@ -197,8 +198,8 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     options.put("hoodie.datasource.write.row.writer.enable", String.valueOf(rowWriterEnable));
     setUp(128 * 1024 * 1024, 16, options);
 
-    writeData(writeClient.createNewInstantTime(), 500, true);
-    writeData(writeClient.createNewInstantTime(), 500, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 500, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 500, true);
     String clusteringTime = (String) writeClient.scheduleClustering(Option.empty()).get();
     writeClient.cluster(clusteringTime, true);
 
@@ -245,7 +246,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
   public void testConcurrentWrite(boolean rowWriterEnable) throws IOException {
     setUp(5120, 16);
     config.setValue("hoodie.datasource.write.row.writer.enable", String.valueOf(rowWriterEnable));
-    String writeTime = writeClient.createNewInstantTime();
+    String writeTime = HoodieActiveTimeline.createNewInstantTime();
     List<WriteStatus> writeStatues = writeData(writeTime, 2000, false);
     // Cannot schedule clustering if there is in-flight writer
     Assertions.assertFalse(writeClient.scheduleClustering(Option.empty()).isPresent());
@@ -256,7 +257,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     // Schedule clustering
     String clusteringTime = (String) writeClient.scheduleClustering(Option.empty()).get();
     // Concurrent is not blocked by the clustering
-    writeData(writeClient.createNewInstantTime(), 2000, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 2000, true);
     // The records are immediately visible when the writer completes
     List<Row> expectedRows = readRecordsSortedByPK();
     assertEquals(4000, expectedRows.size());
@@ -305,7 +306,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
   public void testCornerCase() throws IOException {
     // initial bucket num with 2
     setUp(5120, 4, Collections.singletonMap(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION.key(), "2"));
-    String commitTime = writeClient.createNewInstantTime();
+    String commitTime = HoodieActiveTimeline.createNewInstantTime();
     List<HoodieRecord> records = generateCornerCaseInitialRecords(commitTime);
 
     writeData(records, commitTime, true);
@@ -363,7 +364,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
   public void testCornerCaseWithConcurrentWrite() throws IOException {
     // initial bucket num with 2
     setUp(5120, 4, Collections.singletonMap(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION.key(), "2"));
-    String commitTime = writeClient.createNewInstantTime();
+    String commitTime = HoodieActiveTimeline.createNewInstantTime();
     List<HoodieRecord> records = generateCornerCaseInitialRecords(commitTime);
 
     writeData(records, commitTime, true);
@@ -378,7 +379,7 @@ public class TestSparkExtensibleBucketClustering extends HoodieSparkClientTestHa
     // schedule clustering
     String clusteringTime = (String) writeClient.scheduleClustering(Option.empty()).get();
 
-    String concurrentWriteTime = writeClient.createNewInstantTime();
+    String concurrentWriteTime = HoodieActiveTimeline.createNewInstantTime();
 
     // concurrent write
     List<HoodieRecord> updatedRecords = Arrays.asList(

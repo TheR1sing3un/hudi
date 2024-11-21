@@ -108,6 +108,22 @@ public class StringUtils {
     return str.getBytes(StandardCharsets.UTF_8);
   }
 
+  public static String fromUTF8Bytes(byte[] bytes) {
+    return fromUTF8Bytes(bytes, 0, bytes.length);
+  }
+
+  public static String fromUTF8Bytes(byte[] bytes,
+                                     int offset,
+                                     int length) {
+    if (bytes == null) {
+      return null;
+    }
+    if (length == 0) {
+      return "";
+    }
+    return new String(bytes, offset, length, StandardCharsets.UTF_8);
+  }
+
   public static boolean isNullOrEmpty(String str) {
     return str == null || str.length() == 0;
   }

@@ -27,6 +27,7 @@ import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.testutils.HoodieTestDataGenerator;
 import org.apache.hudi.common.testutils.HoodieTestUtils;
 import org.apache.hudi.common.util.Option;
@@ -102,11 +103,11 @@ public class TestExtensibleBucketIndex extends HoodieSparkClientTestHarness {
     } else {
       initTestDataGenerator(new String[] {""});
     }
-    initHoodieStorage();
+    initFileSystem();
     Properties props = getPropertiesForKeyGen(populateMetaFields);
     props.setProperty(KeyGeneratorOptions.RECORDKEY_FIELD_NAME.key(), "_row_key");
     props.setProperty(HoodieTableConfig.INITIAL_BUCKET_NUM_FOR_NEW_PARTITION.key(), "8");
-    metaClient = HoodieTestUtils.init(storageConf, basePath, HoodieTableType.MERGE_ON_READ, props);
+    metaClient = HoodieTestUtils.init(hadoopConf, basePath, HoodieTableType.MERGE_ON_READ, props);
     config = getConfigBuilder()
         .withProperties(props)
         .withIndexConfig(HoodieIndexConfig.newBuilder()
@@ -203,12 +204,12 @@ public class TestExtensibleBucketIndex extends HoodieSparkClientTestHarness {
   @MethodSource("configParams")
   public void testWriteDataWithCompaction(boolean populateMetaFields, boolean partitioned) throws Exception {
     setUp(populateMetaFields, partitioned);
-    writeData(writeClient.createNewInstantTime(), 200, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 200, true);
     config.setValue(INLINE_COMPACT_NUM_DELTA_COMMITS, "1");
     config.setValue(INLINE_COMPACT_TRIGGER_STRATEGY, CompactionTriggerStrategy.NUM_COMMITS.name());
     String compactionTime = (String) writeClient.scheduleCompaction(Option.empty()).get();
     Assertions.assertEquals(200, readRecordsNum(dataGen.getPartitionPaths(), populateMetaFields));
-    writeData(writeClient.createNewInstantTime(), 200, true);
+    writeData(HoodieActiveTimeline.createNewInstantTime(), 200, true);
     Assertions.assertEquals(400, readRecordsNum(dataGen.getPartitionPaths(), populateMetaFields));
     HoodieWriteMetadata<JavaRDD<WriteStatus>> compactionMetadata = writeClient.compact(compactionTime);
     writeClient.commitCompaction(compactionTime, compactionMetadata.getCommitMetadata().get(), Option.empty());
@@ -243,14 +244,14 @@ public class TestExtensibleBucketIndex extends HoodieSparkClientTestHarness {
         }).sum();
     Assertions.assertEquals(numFilesCreated, numberOfLogFiles);
     // The record number should be doubled if we disable the merge
-    storageConf.set("hoodie.realtime.merge.skip", "true");
+    hadoopConf.set("hoodie.realtime.merge.skip", "true");
     Assertions.assertEquals(totalRecords * 2, readRecordsNum(dataGen.getPartitionPaths(), populateMetaFields));
   }
 
   private int readRecordsNum(String[] partitions, boolean populateMetaFields) {
-    return HoodieMergeOnReadTestUtils.getRecordsUsingInputFormat(storageConf,
+    return HoodieMergeOnReadTestUtils.getRecordsUsingInputFormat(hadoopConf,
         Arrays.stream(partitions).map(p -> Paths.get(basePath, p).toString()).collect(Collectors.toList()), basePath,
-        new JobConf(storageConf.unwrap()), true, populateMetaFields).size();
+        new JobConf(hadoopConf), true, populateMetaFields).size();
   }
 
   /**
@@ -290,7 +291,7 @@ public class TestExtensibleBucketIndex extends HoodieSparkClientTestHarness {
   }
 
   private FileStatus[] listStatus(String p, boolean realtime) {
-    JobConf jobConf = new JobConf(storageConf.unwrap());
+    JobConf jobConf = new JobConf(hadoopConf);
     FileInputFormat.setInputPaths(jobConf, Paths.get(basePath, p).toString());
     FileInputFormat format = HoodieInputFormatUtils.getInputFormat(HoodieFileFormat.PARQUET, realtime, jobConf);
     try {

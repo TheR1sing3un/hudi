@@ -106,7 +106,8 @@ public class SparkExtensibleBucketPartitioner<T> extends SparkHoodiePartitioner<
     WriteOperationType operationType = profile.getOperationType();
     this.isOverwrite = INSERT_OVERWRITE.equals(operationType) || INSERT_OVERWRITE_TABLE.equals(operationType);
     // TODO: consider overwrite scenario
-    this.isNonBlockingConcurrencyControl = config.isNonBlockingConcurrencyControl();
+    // this.isNonBlockingConcurrencyControl = config.isNonBlockingConcurrencyControl();
+    this.isNonBlockingConcurrencyControl = false;
     assignUpdates(profile);
   }
 

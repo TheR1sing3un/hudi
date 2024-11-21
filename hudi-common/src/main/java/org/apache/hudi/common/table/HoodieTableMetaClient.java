@@ -244,7 +244,7 @@ public class HoodieTableMetaClient implements Serializable {
    * @return Extensible bucket metadata base path
    */
   public String getExtensibleBucketMetadataPath() {
-    return new StoragePath(metaPath, EXTENSIBLE_BUCKET_METADATA_FOLDER_NAME).toString();
+    return new Path(metaPath.get(), EXTENSIBLE_BUCKET_METADATA_FOLDER_NAME).toString();
   }
 
   /**

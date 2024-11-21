@@ -20,6 +20,7 @@ package org.apache.hudi.index.bucket;
 
 import org.apache.hudi.avro.model.HoodieClusteringPlan;
 import org.apache.hudi.common.fs.FSUtils;
+import org.apache.hudi.common.fs.HoodieWrapperFileSystem;
 import org.apache.hudi.common.model.ExtensibleBucketResizingOperation;
 import org.apache.hudi.common.model.HoodieExtensibleBucketMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -32,12 +33,11 @@ import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.common.util.collection.Pair;
 import org.apache.hudi.exception.HoodieIndexException;
 import org.apache.hudi.index.HoodieIndexUtils;
-import org.apache.hudi.storage.HoodieStorage;
-import org.apache.hudi.storage.StoragePath;
-import org.apache.hudi.storage.StoragePathInfo;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.cluster.strategy.BaseExtensibleBucketClusteringPlanStrategy;
 
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +45,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -113,11 +114,11 @@ public class ExtensibleBucketIndexUtils {
   }
 
   public static boolean saveMetadata(HoodieTable table, HoodieExtensibleBucketMetadata metadata, boolean overwrite) {
-    HoodieStorage storage = table.getStorage();
-    StoragePath dir = FSUtils.constructAbsolutePath(
+    HoodieWrapperFileSystem fs = table.getMetaClient().getFs();
+    Path dir = FSUtils.getPartitionPath(
         table.getMetaClient().getExtensibleBucketMetadataPath(), metadata.getPartitionPath());
-    StoragePath fullPath = new StoragePath(dir, metadata.getFilename());
-    try (OutputStream out = storage.create(fullPath, overwrite)) {
+    Path fullPath = new Path(dir, metadata.getFilename());
+    try (OutputStream out = fs.create(fullPath, overwrite)) {
       byte[] bytes = metadata.toBytes();
       out.write(bytes);
       out.close();
@@ -130,11 +131,11 @@ public class ExtensibleBucketIndexUtils {
 
   public static Option<HoodieExtensibleBucketMetadata> loadMetadata(HoodieTable table, String partition) {
     HoodieTableMetaClient metaClient = table.getMetaClient();
-    StoragePath metadataPath = FSUtils.constructAbsolutePath(metaClient.getExtensibleBucketMetadataPath(), partition);
-    StoragePath partitionPath = FSUtils.constructAbsolutePath(metaClient.getBasePath(), partition);
+    Path metadataPath = FSUtils.getPartitionPath(metaClient.getExtensibleBucketMetadataPath(), partition);
+    Path partitionPath = FSUtils.getPartitionPath(metaClient.getBasePath(), partition);
     try {
-      final List<StoragePathInfo> metaFiles = metaClient.getStorage().listDirectEntries(metadataPath);
-      Option<StoragePathInfo> latestMetadataFileOpt = metaFiles.stream().filter(file -> file.getPath().getName().contains(HoodieExtensibleBucketMetadata.BUCKET_METADATA_FILE_SUFFIX))
+      final List<FileStatus> metaFiles = Arrays.stream(metaClient.getFs().listStatus(metadataPath)).collect(Collectors.toList());
+      Option<FileStatus> latestMetadataFileOpt = metaFiles.stream().filter(file -> file.getPath().getName().contains(HoodieExtensibleBucketMetadata.BUCKET_METADATA_FILE_SUFFIX))
           .sorted(Comparator.comparing(p -> HoodieExtensibleBucketMetadata.getInstantFromFile(p.getPath().getName()), Comparator.reverseOrder()))
           .findFirst().map(Option::of).orElse(Option.empty());
       return latestMetadataFileOpt.isPresent() ? loadMetadataFromGivenFile(table, latestMetadataFileOpt.get()) : Option.empty();
@@ -153,11 +154,11 @@ public class ExtensibleBucketIndexUtils {
    * @param metaFile Hashing metadata file
    * @return HoodieConsistentHashingMetadata object
    */
-  private static Option<HoodieExtensibleBucketMetadata> loadMetadataFromGivenFile(HoodieTable table, StoragePathInfo metaFile) {
+  private static Option<HoodieExtensibleBucketMetadata> loadMetadataFromGivenFile(HoodieTable table, FileStatus metaFile) {
     if (metaFile == null) {
       return Option.empty();
     }
-    try (InputStream is = table.getStorage().open(metaFile.getPath())) {
+    try (InputStream is = table.getMetaClient().getFs().open(metaFile.getPath())) {
       byte[] content = FileIOUtils.readAsByteArray(is);
       return Option.of(HoodieExtensibleBucketMetadata.fromBytes(content));
     } catch (FileNotFoundException e) {
@@ -193,7 +194,7 @@ public class ExtensibleBucketIndexUtils {
 
   public static Map<String/*partition*/, ExtensibleBucketIdentifier/*bucket layout, maybe uncommitted*/> fetchLatestUncommittedExtensibleBucketIdentifier(HoodieTable table, Set<String> partitions) {
     // fetch from timeline
-    Map<String, ExtensibleBucketIdentifier> pendingIdentifier = table.getActiveTimeline().reload().filterPendingReplaceOrClusteringTimeline().getInstantsAsStream()
+    Map<String, ExtensibleBucketIdentifier> pendingIdentifier = table.getActiveTimeline().reload().filterPendingReplaceTimeline().getInstantsAsStream()
         .map(instant -> ClusteringUtils.getClusteringPlan(table.getMetaClient(), instant))
         .filter(o -> o.isPresent())
         .map(Option::get)
@@ -223,7 +224,7 @@ public class ExtensibleBucketIndexUtils {
   public static Map<String/*partition*/, Pair<ExtensibleBucketIdentifier/*latest committed layout*/, Option<ExtensibleBucketIdentifier>/*optional uncommitted layout*/>>
       fetchLatestCommittedExtensibleBucketIdentifierWithUncommitted(HoodieTable table, Set<String> partitions) {
     // fetch from timeline
-    Map<String, ExtensibleBucketIdentifier> pendingIdentifier = table.getActiveTimeline().reload().filterPendingReplaceOrClusteringTimeline().getInstantsAsStream()
+    Map<String, ExtensibleBucketIdentifier> pendingIdentifier = table.getActiveTimeline().reload().filterPendingReplaceTimeline().getInstantsAsStream()
         .map(instant -> ClusteringUtils.getClusteringPlan(table.getMetaClient(), instant))
         .filter(o -> o.isPresent())
         .map(Option::get)

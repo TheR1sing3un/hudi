@@ -80,6 +80,10 @@ public final class Option<T> implements Serializable {
     return null == value ? empty() : of(value);
   }
 
+  public boolean isEmpty() {
+    return null == val;
+  }
+
   public boolean isPresent() {
     return null != val;
   }
