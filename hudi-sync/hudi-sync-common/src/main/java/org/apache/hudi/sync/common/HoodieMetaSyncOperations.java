@@ -233,4 +233,11 @@ public interface HoodieMetaSyncOperations {
   default void deleteLastReplicatedTimeStamp(String tableName) {
 
   }
+
+  /**
+   * Update the table from simple bucket index to extensible bucket index
+   */
+  default void updateSimpleToExtensibleBucket(String tableName, Integer defaultNumBuckets) {
+
+  }
 }

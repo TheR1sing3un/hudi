@@ -244,4 +244,9 @@ public abstract class HoodieSyncClient implements HoodieMetaSyncOperations, Auto
     }
     return paths;
   }
+
+  @Override
+  public void updateSimpleToExtensibleBucket(String tableName, Integer defaultNumBuckets) {
+    // TODO: implement this later
+  }
 }

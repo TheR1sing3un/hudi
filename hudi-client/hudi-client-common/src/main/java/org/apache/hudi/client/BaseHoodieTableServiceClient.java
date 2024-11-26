@@ -466,7 +466,7 @@ public abstract class BaseHoodieTableServiceClient<I, T, O> extends BaseHoodieCl
 
     // TODO : Where is shouldComplete used ?
     if (shouldComplete && clusteringMetadata.getCommitMetadata().isPresent()) {
-      completeClustering((HoodieReplaceCommitMetadata) clusteringMetadata.getCommitMetadata().get(), table, clusteringInstant, Option.ofNullable(convertToWriteStatus(writeMetadata)));
+      completeClustering((HoodieReplaceCommitMetadata) clusteringMetadata.getCommitMetadata().get(), table, clusteringInstant, Option.ofNullable(convertToWriteStatus(clusteringMetadata)));
     }
     return clusteringMetadata;
   }
@@ -475,7 +475,11 @@ public abstract class BaseHoodieTableServiceClient<I, T, O> extends BaseHoodieCl
 
   protected abstract HoodieWriteMetadata<O> convertToOutputMetadata(HoodieWriteMetadata<T> writeMetadata);
 
-  protected abstract HoodieData<WriteStatus> convertToWriteStatus(HoodieWriteMetadata<T> writeMetadata);
+  protected abstract HoodieData<WriteStatus> convertToWriteStatus(HoodieWriteMetadata<O> writeMetadata);
+
+  protected void completeClustering(HoodieWriteMetadata<O> metadata, HoodieTable table, String clusteringCommitTime) {
+    completeClustering((HoodieReplaceCommitMetadata) metadata.getCommitMetadata().get(), table, clusteringCommitTime, Option.ofNullable(convertToWriteStatus(metadata)));
+  }
 
   private void completeClustering(HoodieReplaceCommitMetadata metadata,
                                   HoodieTable table,

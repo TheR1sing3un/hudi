@@ -1204,6 +1204,19 @@ public abstract class BaseHoodieWriteClient<T, I, K, O> extends BaseHoodieClient
     return tableServiceClient.cluster(clusteringInstant, shouldComplete);
   }
 
+  public void commitClustering(String clusteringInstantTime, HoodieWriteMetadata metadata, Option<Map<String, String>> extraMetadata) {
+    HoodieTable table = createTable(config, context.getHadoopConf().get());
+    extraMetadata.ifPresent(m -> m.forEach((k, v) -> ((Option<HoodieCommitMetadata>) metadata.getCommitMetadata()).ifPresent(cm -> cm.addMetadata(k, v))));
+    completeClustering(metadata, table, clusteringInstantTime);
+  }
+
+  /**
+   * Commit Compaction and track metrics.
+   */
+  protected void completeClustering(HoodieWriteMetadata metadata, HoodieTable table, String clusteringCommitTime) {
+    tableServiceClient.completeClustering(metadata, table, clusteringCommitTime);
+  }
+
   /**
    * Schedule table services such as clustering, compaction & cleaning.
    *

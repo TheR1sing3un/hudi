@@ -26,11 +26,14 @@ import org.apache.hudi.common.model.HoodieExtensibleBucketMetadata;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.ClusteringUtils;
 import org.apache.hudi.common.util.FileIOUtils;
 import org.apache.hudi.common.util.Option;
+import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.common.util.collection.Pair;
+import org.apache.hudi.exception.HoodieIOException;
 import org.apache.hudi.exception.HoodieIndexException;
 import org.apache.hudi.index.HoodieIndexUtils;
 import org.apache.hudi.table.HoodieTable;
@@ -45,6 +48,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
@@ -52,6 +56,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -68,7 +74,7 @@ public class ExtensibleBucketIndexUtils {
   public static final String METADATA_PREV_BUCKET_NUMBER = "bucket.resizing.prev.bucket.number";
   public static final String METADATA_BUCKET_RESIZING_OP = "bucket.resizing.op";
 
-  public static ExtensibleBucketIdentifier loadExtensibleBucketIdentifier(final HoodieTable table, final String partition) {
+  public static ExtensibleBucketIdentifier loadExtensibleBucketIdentifierWithExistLocation(final HoodieTable table, final String partition) {
     HoodieExtensibleBucketMetadata metadata = loadOrCreateMetadata(table, partition);
 
     Map<Integer/*bucket id*/, HoodieRecordLocation> bucketIdToFileIdMapping = new HashMap<>();
@@ -132,19 +138,129 @@ public class ExtensibleBucketIndexUtils {
   public static Option<HoodieExtensibleBucketMetadata> loadMetadata(HoodieTable table, String partition) {
     HoodieTableMetaClient metaClient = table.getMetaClient();
     Path metadataPath = FSUtils.getPartitionPath(metaClient.getExtensibleBucketMetadataPath(), partition);
-    Path partitionPath = FSUtils.getPartitionPath(metaClient.getBasePath(), partition);
+    Path partitionPath = FSUtils.getPartitionPath(metaClient.getBasePathV2(), partition);
     try {
-      final List<FileStatus> metaFiles = Arrays.stream(metaClient.getFs().listStatus(metadataPath)).collect(Collectors.toList());
-      Option<FileStatus> latestMetadataFileOpt = metaFiles.stream().filter(file -> file.getPath().getName().contains(HoodieExtensibleBucketMetadata.BUCKET_METADATA_FILE_SUFFIX))
-          .sorted(Comparator.comparing(p -> HoodieExtensibleBucketMetadata.getInstantFromFile(p.getPath().getName()), Comparator.reverseOrder()))
-          .findFirst().map(Option::of).orElse(Option.empty());
-      return latestMetadataFileOpt.isPresent() ? loadMetadataFromGivenFile(table, latestMetadataFileOpt.get()) : Option.empty();
+      Predicate<FileStatus> hashingMetaCommitFilePredicate = fileStatus -> {
+        String filename = fileStatus.getPath().getName();
+        return filename.contains(HoodieExtensibleBucketMetadata.BUCKET_METADATA_COMMIT_FILE_SUFFIX);
+      };
+      Predicate<FileStatus> hashingMetadataFilePredicate = fileStatus -> {
+        String filename = fileStatus.getPath().getName();
+        return filename.contains(HoodieExtensibleBucketMetadata.BUCKET_METADATA_FILE_SUFFIX);
+      };
+      final FileStatus[] metaFiles = metaClient.getFs().listStatus(metadataPath);
+      final TreeSet<String> commitMetaTss = Arrays.stream(metaFiles).filter(hashingMetaCommitFilePredicate)
+          .map(commitFile -> HoodieExtensibleBucketMetadata.getInstantFromFile(commitFile.getPath().getName()))
+          .sorted()
+          .collect(Collectors.toCollection(TreeSet::new));
+      final FileStatus[] hashingMetaFiles = Arrays.stream(metaFiles).filter(hashingMetadataFilePredicate)
+          .sorted(Comparator.comparing(f -> f.getPath().getName()))
+          .toArray(FileStatus[]::new);
+      // max committed metadata file
+      final String maxCommitMetaFileTs = commitMetaTss.isEmpty() ? null : commitMetaTss.last();
+      // max updated metadata file
+      FileStatus maxMetadataFile = hashingMetaFiles.length > 0 ? hashingMetaFiles[hashingMetaFiles.length - 1] : null;
+      // If single file present in metadata and if its default file return it
+      if (maxMetadataFile != null && HoodieExtensibleBucketMetadata.getInstantFromFile(maxMetadataFile.getPath().getName()).equals(HoodieTimeline.INIT_INSTANT_TS)) {
+        return loadMetadataFromGivenFile(table, maxMetadataFile);
+      }
+      // if max updated metadata file and committed metadata file are same then return
+      if (maxCommitMetaFileTs != null && maxMetadataFile != null
+          && maxCommitMetaFileTs.equals(HoodieExtensibleBucketMetadata.getInstantFromFile(maxMetadataFile.getPath().getName()))) {
+        return loadMetadataFromGivenFile(table, maxMetadataFile);
+      }
+      HoodieTimeline completedCommits = metaClient.getActiveTimeline().getCommitTimeline().filterCompletedInstants();
+
+      // fix the in-consistency between un-committed and committed hashing metadata files.
+      List<FileStatus> fixed = new ArrayList<>();
+      Arrays.stream(hashingMetaFiles).forEach(hashingMetaFile -> {
+        Path path = hashingMetaFile.getPath();
+        String timestamp = HoodieExtensibleBucketMetadata.getInstantFromFile(path.getName());
+        if (maxCommitMetaFileTs != null && timestamp.compareTo(maxCommitMetaFileTs) <= 0) {
+          // only fix the metadata with greater timestamp than max committed timestamp
+          return;
+        }
+        boolean isResizingCommitted = completedCommits.containsInstant(timestamp) || timestamp.equals(HoodieTimeline.INIT_INSTANT_TS);
+        if (isResizingCommitted) {
+          if (!commitMetaTss.contains(timestamp)) {
+            try {
+              createCommitMarker(table, path, metadataPath);
+            } catch (IOException e) {
+              throw new HoodieIOException("Exception while creating marker file " + path.getName() + " for partition " + partition, e);
+            }
+          }
+          fixed.add(hashingMetaFile);
+        } else if (recommitMetadataFile(table, hashingMetaFile, partition)) {
+          fixed.add(hashingMetaFile);
+        }
+      });
+
+      return fixed.isEmpty() ? Option.empty() : loadMetadataFromGivenFile(table, fixed.get(fixed.size() - 1));
     } catch (FileNotFoundException e) {
       return Option.empty();
     } catch (IOException e) {
-      LOG.error("Error loading extensible bucket metadata from " + metadataPath, e);
-      throw new HoodieIndexException("Error loading extensible bucket metadata from " + metadataPath, e);
+      LOG.error("Error when loading hashing metadata, partition: " + partition, e);
+      throw new HoodieIndexException("Error while loading hashing metadata", e);
     }
+  }
+
+  /***
+   * Creates commit marker corresponding to hashing metadata file after post commit clustering operation.
+   *
+   * @param table         Hoodie table
+   * @param fileStatus    File for which commit marker should be created
+   * @param metadataPartitionPath Extensible Bucket Metadata partition path, format : {basePath}/.hoodie/.bucket_index/extensible_bucket_metadata/{partition}
+   * @throws IOException
+   */
+  private static void createCommitMarker(HoodieTable table, Path fileStatus, Path metadataPartitionPath) throws IOException {
+    HoodieWrapperFileSystem fs = table.getMetaClient().getFs();
+    Path fullPath = new Path(metadataPartitionPath, HoodieExtensibleBucketMetadata.getInstantFromFile(fileStatus.getName()) + HoodieExtensibleBucketMetadata.BUCKET_METADATA_COMMIT_FILE_SUFFIX);
+    if (fs.exists(fullPath)) {
+      return;
+    }
+    FileIOUtils.createFileInPath(fs, fullPath, Option.of(StringUtils.EMPTY_STRING.getBytes()));
+  }
+
+  /***
+   * COMMIT MARKER RECOVERY JOB.
+   *
+   * <p>If particular hashing metadata file doesn't have commit marker then there could be a case where clustering is done but post commit marker
+   * creation operation failed. In this case this method will check file group id from consistent hashing metadata against storage base file group ids.
+   * if one of the file group matches then we can conclude that this is the latest metadata file.
+   *
+   * <p>Note : we will end up calling this method if there is no marker file and no replace commit on active timeline, if replace commit is not present on
+   * active timeline that means old file group id's before clustering operation got cleaned and only new file group id's of current clustering operation
+   * are present on the disk.
+   *
+   * @param table     Hoodie table
+   * @param metaFile  Metadata file on which sync check needs to be performed
+   * @param partition Partition metadata file belongs to
+   * @return true if hashing metadata file is latest else false
+   */
+  private static boolean recommitMetadataFile(HoodieTable table, FileStatus metaFile, String partition) {
+    Path metadataPath = FSUtils.getPartitionPath(table.getMetaClient().getExtensibleBucketMetadataPath(), partition);
+    String timestamp = HoodieExtensibleBucketMetadata.getInstantFromFile(metaFile.getPath().getName());
+    if (table.getPendingCommitTimeline().containsInstant(timestamp)) {
+      return false;
+    }
+    Option<HoodieExtensibleBucketMetadata> extensibleBucketMetadataOption = loadMetadataFromGivenFile(table, metaFile);
+    if (extensibleBucketMetadataOption.isEmpty()) {
+      return false;
+    }
+    HoodieExtensibleBucketMetadata extensibleBucketMetadata = extensibleBucketMetadataOption.get();
+
+    Predicate<String> hoodieFileGroupIdPredicate =
+        fileIdPrefix -> new ExtensibleBucketIdentifier(extensibleBucketMetadata).generateFileIdPrefixForAllBuckets().anyMatch(prefix -> prefix.equals(fileIdPrefix));
+    if (table.getBaseFileOnlyView().getLatestBaseFiles(partition)
+        .map(baseFile -> FSUtils.getFileIdPfxFromFileId(baseFile.getFileId())).anyMatch(hoodieFileGroupIdPredicate)) {
+      try {
+        createCommitMarker(table, metaFile.getPath(), metadataPath);
+        return true;
+      } catch (IOException e) {
+        throw new HoodieIOException("Exception while creating marker file " + metaFile.getPath().getName() + " for partition " + partition, e);
+      }
+    }
+    return false;
   }
 
   /**
