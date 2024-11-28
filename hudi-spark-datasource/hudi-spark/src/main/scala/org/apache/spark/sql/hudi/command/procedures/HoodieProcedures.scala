@@ -89,6 +89,7 @@ object HoodieProcedures {
       ,(ShowTablePropertiesProcedure.NAME, ShowTablePropertiesProcedure.builder)
       ,(HelpProcedure.NAME, HelpProcedure.builder)
       ,(ArchiveCommitsProcedure.NAME, ArchiveCommitsProcedure.builder)
+      ,(SimpleToExtensibleBucketProcedure.NAME, SimpleToExtensibleBucketProcedure.builder)
     )
   }
 }

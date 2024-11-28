@@ -99,14 +99,27 @@ public class ExtensibleBucketIndexUtils {
     return new ExtensibleBucketIdentifier(metadata, false, bucketIdToFileIdMapping);
   }
 
+  /**
+   * Load or create metadata for the given partition.
+   */
   public static HoodieExtensibleBucketMetadata loadOrCreateMetadata(HoodieTable table, String partition) {
+    int bucketNum = table.getMetaClient().getTableConfig().getInitialBucketNumberForNewPartition();
+    return loadOrCreateMetadata(table, partition, bucketNum);
+  }
+
+  /**
+   * Load or create metadata for the given partition using the given bucket number.
+   * @param table Hoodie table
+   * @param partition Partition path
+   * @param bucketNum Initial bucket number
+   */
+  public static HoodieExtensibleBucketMetadata loadOrCreateMetadata(HoodieTable table, String partition, int bucketNum) {
     Option<HoodieExtensibleBucketMetadata> metadataOpt = loadMetadata(table, partition);
     if (metadataOpt.isPresent()) {
       return metadataOpt.get();
     }
 
     LOG.info("Failed to load extensible bucket metadata for partition " + partition + ". Creating new metadata");
-    int bucketNum = table.getMetaClient().getTableConfig().getInitialBucketNumberForNewPartition();
     HoodieExtensibleBucketMetadata metadata = HoodieExtensibleBucketMetadata.initialVersionMetadata(partition, bucketNum);
     if (saveMetadata(table, metadata, false)) {
       return metadata;
