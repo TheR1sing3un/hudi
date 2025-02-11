@@ -17,6 +17,11 @@
 
 package org.apache.spark.sql.hudi.command
 
+import org.apache.avro.Schema
+import org.apache.hudi.avro.HoodieAvroUtils
+import org.apache.hudi.config.HoodieWriteConfig
+import org.apache.hudi.exception.HoodieException
+import org.apache.hudi.{AvroConversionUtils, DataSourceWriteOptions, HoodieSparkSqlWriter, SparkAdapterSupport}
 import org.apache.hudi.{HoodieSparkSqlWriter, SparkAdapterSupport}
 import org.apache.hudi.exception.HoodieException
 
@@ -32,6 +37,8 @@ import org.apache.spark.sql.hudi.ProvidesHoodieConfig
 import org.apache.spark.sql.hudi.command.HoodieLeafRunnableCommand.stripMetaFieldAttributes
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
+
+import scala.collection.JavaConverters._
 
 /**
  * Command for insert into Hudi table.
@@ -96,9 +103,21 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
     }
     val config = buildHoodieInsertConfig(catalogTable, sparkSession, isOverWritePartition, isOverWriteTable, partitionSpec, extraOptions, staticOverwritePartitionPathOpt)
 
-    val alignedQuery = alignQueryOutput(query, catalogTable, partitionSpec, sparkSession.sessionState.conf)
+    val (alignedQuery, isPartialInsert) = alignQueryOutput(query, catalogTable, partitionSpec, sparkSession.sessionState.conf, config)
 
-    val (success, _, _, _, _, _) = HoodieSparkSqlWriter.write(sparkSession.sqlContext, mode, config, Dataset.ofRows(sparkSession, alignedQuery))
+    val finalConfig: Map[String, String] = if (isPartialInsert) {
+      logInfo("Using partial insert for the write operation")
+      val fullSchema = getTableSchema(catalogTable)
+      val insertFieldSeq = alignedQuery.output.map(_.name)
+      val partialSchema = HoodieAvroUtils.generateProjectionSchema(fullSchema, insertFieldSeq.asJava)
+      config ++ Seq(
+        HoodieWriteConfig.WRITE_SCHEMA_OVERRIDE.key -> fullSchema.toString,
+        HoodieWriteConfig.WRITE_PARTIAL_UPDATE_SCHEMA.key -> partialSchema.toString)
+    } else {
+      config
+    }
+
+    val (success, _, _, _, _, _) = HoodieSparkSqlWriter.write(sparkSession.sqlContext, mode, finalConfig, Dataset.ofRows(sparkSession, alignedQuery))
 
     if (!success) {
       throw new HoodieException("Insert Into to Hudi table failed")
@@ -109,6 +128,13 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
     }
 
     success
+  }
+
+  private def getTableSchema(catalogTable: HoodieCatalogTable): Schema = {
+    val (structName, nameSpace) = AvroConversionUtils
+      .getAvroRecordNameAndNamespace(catalogTable.tableName)
+    AvroConversionUtils.convertStructTypeToAvroSchema(
+      catalogTable.tableSchemaWithoutMetaFields, structName, nameSpace)
   }
 
   /**
@@ -127,7 +153,7 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
   private def alignQueryOutput(query: LogicalPlan,
                                catalogTable: HoodieCatalogTable,
                                partitionsSpec: Map[String, Option[String]],
-                               conf: SQLConf): LogicalPlan = {
+                               conf: SQLConf, hoodieConfig: Map[String, String]): (LogicalPlan, Boolean) = {
 
     val targetPartitionSchema = catalogTable.partitionSchema
     val staticPartitionValues = filterStaticPartitionValues(partitionsSpec)
@@ -142,13 +168,39 @@ object InsertIntoHoodieTableCommand extends Logging with ProvidesHoodieConfig wi
     //       since such columns wouldn't be otherwise specified w/in the query itself and therefore couldn't be matched
     //       positionally for example
     val expectedQueryColumns = catalogTable.tableSchemaWithoutMetaFields.filterNot(f => staticPartitionValues.contains(f.name))
-    val coercedQueryOutput = coerceQueryOutputColumns(StructType(expectedQueryColumns), cleanedQuery, catalogTable, conf)
-    // After potential reshaping validate that the output of the query conforms to the table's schema
-    validate(removeMetaFields(coercedQueryOutput.schema), partitionsSpec, catalogTable)
+
+    val noEnoughColumns = expectedQueryColumns.size > cleanedQuery.output.size
+    val partialInsertEnabled = true
+    val isMORTable = catalogTable.tableTypeName == DataSourceWriteOptions.MOR_TABLE_TYPE_OPT_VAL
+    // Only enable writing partial updates to data blocks for MOR tables
+    val isPartialInsert = isMORTable && noEnoughColumns && partialInsertEnabled
+    val coercedQueryOutput = if (isPartialInsert) {
+      coerceQueryOutputColumnsPartialInsert(StructType(expectedQueryColumns), cleanedQuery)
+    } else {
+      val coercedQueryOutputColumns = coerceQueryOutputColumns(StructType(expectedQueryColumns), cleanedQuery, catalogTable, conf)
+      // After potential reshaping validate that the output of the query conforms to the table's schema
+      validate(removeMetaFields(coercedQueryOutputColumns.schema), partitionsSpec, catalogTable)
+      coercedQueryOutputColumns
+    }
 
     val staticPartitionValuesExprs = createStaticPartitionValuesExpressions(staticPartitionValues, targetPartitionSchema, conf)
 
-    Project(coercedQueryOutput.output ++ staticPartitionValuesExprs, coercedQueryOutput)
+    (Project(coercedQueryOutput.output ++ staticPartitionValuesExprs, coercedQueryOutput), isPartialInsert)
+  }
+
+  private def coerceQueryOutputColumnsPartialInsert(expectedSchema: StructType,
+                                                    query: LogicalPlan): LogicalPlan = {
+    val exprs: Seq[NamedExpression] = query.output.map(attr => {
+      val attrName = attr.name
+      val targetField = expectedSchema.apply(attrName)
+      val castAttr = castIfNeeded(attr.withNullability(targetField.nullable), targetField.dataType)
+      Alias(castAttr, targetField.name)()
+    })
+    if (exprs == query.output) {
+      query
+    } else {
+      Project(exprs, query)
+    }
   }
 
   private def coerceQueryOutputColumns(expectedSchema: StructType,

@@ -39,6 +39,7 @@ import org.apache.spark.sql.types.{StructField, StructType}
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
+import scala.collection.convert.ImplicitConversions.`map AsJavaMap`
 
 /**
  * Util methods for Schema evolution in Hudi
@@ -142,6 +143,8 @@ object HoodieSchemaUtils {
     //       w/ the table's one and allow schemas to diverge. This is required in cases where
     //       partial updates will be performed (for ex, `MERGE INTO` Spark SQL statement) and as such
     //       only incoming dataset's projection has to match the table's schema, and not the whole one
+    val partialInsert: Boolean = !StringUtils.isNullOrEmpty(opts.getOrDefault(HoodieWriteConfig.WRITE_PARTIAL_UPDATE_SCHEMA.key,
+      HoodieWriteConfig.WRITE_PARTIAL_UPDATE_SCHEMA.defaultValue()))
     val mergeIntoWrites = opts.getOrElse(SQL_MERGE_INTO_WRITES.key(), SQL_MERGE_INTO_WRITES.defaultValue.toString).toBoolean
     val shouldValidateSchemasCompatibility = opts.getOrElse(HoodieWriteConfig.AVRO_SCHEMA_VALIDATE_ENABLE.key,
       HoodieWriteConfig.AVRO_SCHEMA_VALIDATE_ENABLE.defaultValue).toBoolean
@@ -150,7 +153,7 @@ object HoodieSchemaUtils {
     val setNullForMissingColumns = opts.getOrElse(DataSourceWriteOptions.SET_NULL_FOR_MISSING_COLUMNS.key(),
       DataSourceWriteOptions.SET_NULL_FOR_MISSING_COLUMNS.defaultValue).toBoolean
 
-    if (!mergeIntoWrites && !shouldValidateSchemasCompatibility && !allowAutoEvolutionColumnDrop) {
+    if (!mergeIntoWrites && !shouldValidateSchemasCompatibility && !allowAutoEvolutionColumnDrop && !partialInsert) {
       // Default behaviour
       val reconciledSchema = if (setNullForMissingColumns) {
         AvroSchemaEvolutionUtils.reconcileSchema(canonicalizedSourceSchema, latestTableSchema, setNullForMissingColumns)
