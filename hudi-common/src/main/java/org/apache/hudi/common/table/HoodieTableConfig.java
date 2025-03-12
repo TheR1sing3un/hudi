@@ -303,6 +303,13 @@ public class HoodieTableConfig extends HoodieConfig {
       .sinceVersion("1.0.0")
       .withDocumentation("When set to true, the table can support reading and writing multiple base file formats.");
 
+  public static final ConfigProperty<Boolean> PRIMARY_KEY_SORTED_ENABLE = ConfigProperty
+      .key("hoodie.table.pk.sorted.enable")
+      .defaultValue(true)
+      .sinceVersion("1.0.0")
+      .withDocumentation("When set to true, the table will be ordered in the file group dimension based on primary keys");
+
+
   public static final ConfigProperty<String> URL_ENCODE_PARTITIONING = KeyGeneratorOptions.URL_ENCODE_PARTITIONING;
   public static final ConfigProperty<String> HIVE_STYLE_PARTITIONING_ENABLE = KeyGeneratorOptions.HIVE_STYLE_PARTITIONING_ENABLE;
 
@@ -1143,6 +1150,10 @@ public class HoodieTableConfig extends HoodieConfig {
   public Map<String, String> propsMap() {
     return props.entrySet().stream()
         .collect(Collectors.toMap(e -> String.valueOf(e.getKey()), e -> String.valueOf(e.getValue())));
+  }
+
+  public boolean isPkSortedTable() {
+    return getBoolean(PRIMARY_KEY_SORTED_ENABLE);
   }
 
   /**

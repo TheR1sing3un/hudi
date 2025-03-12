@@ -2936,6 +2936,20 @@ public class HoodieWriteConfig extends HoodieConfig {
     return metadataConfig.getSecondaryIndexParallelism();
   }
 
+  public Option<String[]> getRecordKeyFields() {
+    String keyFieldsValue = getStringOrDefault(HoodieTableConfig.RECORDKEY_FIELDS, null);
+    if (keyFieldsValue == null) {
+      return Option.empty();
+    } else {
+      return Option.of(Arrays.stream(keyFieldsValue.split(",")).map(String::trim)
+          .filter(p -> p.length() > 0).collect(Collectors.toList()).toArray(new String[] {}));
+    }
+  }
+  
+  public boolean isPkSortedTable() {
+    return getBoolean(HoodieTableConfig.PRIMARY_KEY_SORTED_ENABLE);
+  }
+
   public static class Builder {
 
     protected final HoodieWriteConfig writeConfig = new HoodieWriteConfig();
